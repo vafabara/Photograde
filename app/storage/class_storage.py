@@ -25,6 +25,7 @@ touches folder_path, which points at the professor's own photos
 """
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -57,8 +58,18 @@ def save_class(class_record):
         class_dir = _class_dir(class_record.class_id)
         class_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(_class_file(class_record.class_id), "w", encoding="utf-8") as f:
+        class_file = _class_file(class_record.class_id)
+        temp_file = class_file.with_name(class_file.name + ".tmp")
+
+        # Write to a temp file in the same folder first, then swap it
+        # in with os.replace() (atomic) -- so a crash mid-write can
+        # never leave class.json half-written.
+        with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(class_record.to_dict(), f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(temp_file, class_file)
 
     except OSError as error:
         raise ClassStorageError(f"Could not save class: {error}")

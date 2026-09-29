@@ -618,8 +618,24 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ]
 
         if source_folder is not None and source_folder == student.folder_path:
-            student.photo_count = len(image_paths)
-            student.photos = new_photos
+            # Re-scan without losing grading data: photos already known
+            # keep their existing ClassPhotoEntry (scores + note), new
+            # files are appended, and only photos of this folder that
+            # are no longer in it are dropped. Photos from elsewhere
+            # (individually added files) are left untouched.
+            folder = Path(source_folder)
+            scanned_paths = {photo.path for photo in new_photos}
+            existing_paths = {photo.path for photo in student.photos}
+
+            student.photos = [
+                photo for photo in student.photos
+                if photo.path in scanned_paths
+                or Path(photo.path).parent != folder
+            ] + [
+                photo for photo in new_photos
+                if photo.path not in existing_paths
+            ]
+            student.photo_count = len(student.photos)
         else:
             student.photo_count += len(image_paths)
             student.photos += new_photos
