@@ -22,14 +22,18 @@ class HomeScreen:
       - clicking a class name calls `on_open_class(class_id)`
       - clicking Delete asks for confirmation right here, and only
         calls `on_delete_class(class_id)` if the professor picks Yes
+
+    New feature: How to Use. The Welcome card has a "How to Use"
+    button that calls `on_help()`; App decides what to show.
     """
 
-    def __init__(self, parent, classes, on_continue, on_open_class, on_delete_class):
+    def __init__(self, parent, classes, on_continue, on_open_class, on_delete_class, on_help=None):
 
         self.classes = classes
         self.on_continue = on_continue
         self.on_open_class = on_open_class
         self.on_delete_class = on_delete_class
+        self.on_help = on_help
 
         self.container = ctk.CTkFrame(
             parent,
@@ -111,6 +115,23 @@ class HomeScreen:
             font=ctk.CTkFont(size=13),
             justify="left",
             wraplength=380
+        ).pack(
+            anchor="w",
+            padx=20,
+            pady=(0, 15)
+        )
+
+        ctk.CTkButton(
+            card,
+            text="❓  How to Use",
+            width=150,
+            height=32,
+            fg_color="transparent",
+            hover_color="#123f2c",
+            border_color="#2ECC71",
+            border_width=1,
+            text_color="#7CFFB2",
+            command=self.on_help
         ).pack(
             anchor="w",
             padx=20,
