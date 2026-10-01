@@ -7,7 +7,7 @@ from ..core.rules import (
     build_rule,
     validate_score_split,
 )
-from .widgets import show_prompt
+from .widgets import show_confirm, show_prompt
 
 
 class RuleEngineScreen:
@@ -31,6 +31,11 @@ class RuleEngineScreen:
     and calls `on_save_preset(name, config)`; persisting it and
     refreshing the list is the caller's job (same "screen renders,
     App persists" split used everywhere else in the app).
+
+    Deleting and renaming a preset follow the same split:
+    `on_delete_preset(name)` is only called after the professor
+    confirms, and `on_rename_preset(old_name, new_name)` only after a
+    non-blank, non-clashing new name was entered.
     """
 
     def __init__(
@@ -41,11 +46,15 @@ class RuleEngineScreen:
         on_save_preset=None,
         presets=None,
         banner_text=None,
+        on_delete_preset=None,
+        on_rename_preset=None,
     ):
 
         self.on_continue = on_continue
         self.on_skip = on_skip
         self.on_save_preset = on_save_preset
+        self.on_delete_preset = on_delete_preset
+        self.on_rename_preset = on_rename_preset
         self.presets = presets or {}
         self.factor_entries = {}
 
@@ -329,6 +338,57 @@ class RuleEngineScreen:
             command=self.handle_save_preset
         ).pack(side="left")
 
+        # Rename / Delete act on whichever preset is selected in the
+        # dropdown above. Kept on their own row so the first row
+        # doesn't outgrow the window's minimum width.
+        manage_row = ctk.CTkFrame(
+            self.container,
+            fg_color="transparent"
+        )
+
+        manage_row.pack(
+            fill="x",
+            pady=(8, 0)
+        )
+
+        ctk.CTkButton(
+            manage_row,
+            text="Rename Selected",
+            width=140,
+            fg_color="transparent",
+            hover_color="#123f2c",
+            border_color="#2ECC71",
+            border_width=1,
+            text_color="#7CFFB2",
+            command=self.handle_rename_preset
+        ).pack(
+            side="left",
+            padx=(0, 10)
+        )
+
+        ctk.CTkButton(
+            manage_row,
+            text="Delete Selected",
+            width=140,
+            fg_color="transparent",
+            hover_color="#3a1f1f",
+            border_color="#FF6B6B",
+            border_width=1,
+            text_color="#FF6B6B",
+            command=self.handle_delete_preset
+        ).pack(side="left")
+
+    def selected_preset_name(self):
+        """
+        The preset currently chosen in the dropdown, or None when
+        there are no saved presets (the dropdown then only shows the
+        disabled "No saved presets" placeholder).
+        """
+
+        name = self.preset_menu.get()
+
+        return name if name in self.presets else None
+
     def handle_load_preset(self):
         """
         Loads the selected preset straight into the existing
@@ -389,6 +449,58 @@ class RuleEngineScreen:
             "Save Preset",
             "Preset name:",
             on_submit=lambda name: self.on_save_preset(name, config)
+        )
+
+    def handle_delete_preset(self):
+        """
+        Asks for confirmation (same show_confirm used for deleting a
+        class/student) and only then reports the deletion to App,
+        which removes just that preset from storage.
+        """
+
+        self.error_label.configure(text="")
+
+        name = self.selected_preset_name()
+
+        if name is None or not self.on_delete_preset:
+            return
+
+        show_confirm(
+            self.container,
+            f'Are you sure you want to delete\nthe preset "{name}"?',
+            on_yes=lambda: self.on_delete_preset(name)
+        )
+
+    def handle_rename_preset(self):
+        """
+        Asks for the new name with the same show_prompt used for
+        naming a new preset. A name that's already taken by a
+        different preset is rejected here with a message under the
+        form, so a rename can never overwrite another preset.
+        """
+
+        self.error_label.configure(text="")
+
+        name = self.selected_preset_name()
+
+        if name is None or not self.on_rename_preset:
+            return
+
+        def handle_submit(new_name):
+
+            if new_name != name and new_name in self.presets:
+                self.error_label.configure(
+                    text=f'A preset named "{new_name}" already exists.'
+                )
+                return
+
+            self.on_rename_preset(name, new_name)
+
+        show_prompt(
+            self.container,
+            "Rename Preset",
+            f'New name for "{name}":',
+            on_submit=handle_submit
         )
 
     # -----------------------------------------

@@ -140,6 +140,72 @@ def show_confirm(parent, message, on_yes):
     )
 
 
+def show_undo_bar(parent, message, on_undo, duration_ms=10000):
+    """
+    Small "<message> [Undo]" bar pinned to the bottom of `parent`
+    (new feature: Undo for Delete Class / Delete Student). Calls
+    `on_undo()` if the professor presses Undo before it disappears.
+
+    The bar goes away on its own after `duration_ms`, and also
+    disappears whenever the screen is rebuilt (App.clear_main_frame
+    destroys everything inside main_frame) -- in both cases the undo
+    opportunity is simply over.
+
+    `parent` should be a long-lived frame (App.main_frame): the
+    timer is scheduled on it rather than on the bar, because Tk
+    drops a widget's pending after() callbacks when the widget is
+    destroyed, which would otherwise print a Tcl error.
+    """
+
+    bar = ctk.CTkFrame(
+        parent,
+        corner_radius=10,
+        border_width=1,
+        border_color="#2ECC71"
+    )
+
+    bar.place(
+        relx=0.5,
+        rely=1.0,
+        anchor="s",
+        y=-15
+    )
+
+    ctk.CTkLabel(
+        bar,
+        text=message,
+        font=ctk.CTkFont(size=13)
+    ).pack(
+        side="left",
+        padx=(15, 10),
+        pady=8
+    )
+
+    def handle_undo():
+        bar.destroy()
+        on_undo()
+
+    ctk.CTkButton(
+        bar,
+        text="Undo",
+        width=70,
+        height=28,
+        fg_color="#1F8F4C",
+        hover_color="#27AE60",
+        command=handle_undo
+    ).pack(
+        side="left",
+        padx=(0, 12),
+        pady=8
+    )
+
+    def expire():
+        if bar.winfo_exists():
+            bar.destroy()
+
+    parent.after(duration_ms, expire)
+
+
 def show_prompt(parent, title, label_text, on_submit):
     """
     Small popup that asks for one line of text (new feature: Rule

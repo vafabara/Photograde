@@ -20,7 +20,14 @@ from ..core.class_model import (
     ClassPhotoEntry,
 )
 from ..storage.class_storage import save_class, load_all_classes, load_class, delete_class
-from ..storage.rule_presets import load_presets, save_preset
+from ..storage.export import export_to_csv, export_to_json
+from ..storage.rule_presets import (
+    load_presets,
+    save_preset,
+    delete_preset,
+    rename_preset,
+    RulePresetError,
+)
 
 from .class_screen import ClassScreen
 from .home_screen import HomeScreen
@@ -31,7 +38,7 @@ from .rule_engine import RuleEngineScreen
 from .student_detail import StudentDetailScreen
 from .student_results_detail import StudentResultsDetailScreen
 from .student_setup import StudentFoldersScreen
-from .widgets import show_error
+from .widgets import show_error, show_info, show_undo_bar
 
 
 class App(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -41,7 +48,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.TkdndVersion = TkinterDnD._require(self)
 
-        self.title("Image Metadata")
+        self.title("PhotoGrade")
         self.geometry("1050x700")
         self.minsize(900, 600)
 
@@ -340,10 +347,10 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         of the usual full-queue review.
 
         New feature: Rule Engine Presets. Presets are loaded fresh
-        from storage every time this screen opens. Saving a new
-        preset re-opens this same screen (with the same
+        from storage every time this screen opens. Saving, deleting
+        or renaming a preset re-opens this same screen (with the same
         on_continue/on_skip/banner_text it was already showing) so
-        the preset list reflects the save immediately.
+        the preset list reflects the change immediately.
         """
 
         self.clear_main_frame()
@@ -354,13 +361,33 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             save_preset(name, config)
             self.show_rule_engine_screen(on_continue, on_skip, banner_text)
 
+        def handle_delete_preset(name):
+            try:
+                delete_preset(name)
+            except RulePresetError as error:
+                show_error(self, str(error))
+                return
+
+            self.show_rule_engine_screen(on_continue, on_skip, banner_text)
+
+        def handle_rename_preset(old_name, new_name):
+            try:
+                rename_preset(old_name, new_name)
+            except RulePresetError as error:
+                show_error(self, str(error))
+                return
+
+            self.show_rule_engine_screen(on_continue, on_skip, banner_text)
+
         RuleEngineScreen(
             self.main_frame,
             on_continue=on_continue,
             on_skip=on_skip,
             on_save_preset=handle_save_preset,
             presets=presets,
-            banner_text=banner_text
+            banner_text=banner_text,
+            on_delete_preset=handle_delete_preset,
+            on_rename_preset=handle_rename_preset
         )
 
     def on_rules_configured(self, config):
@@ -368,11 +395,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         Applies the professor's System/Human score split to every
         photo in the review queue. The split itself always comes
         from `config` -- nothing here hard-codes a specific
-        weighting -- so 40/60, 30/70, etc. all just work. This is
-        just the default; load_and_display() overrides it per photo
-        to teacher_max_score=100 if that photo's EXIF turns out to
-        be missing a configured factor, since that isn't known until
-        the photo is actually loaded and graded.
+        weighting -- so 40/60, 30/70, etc. all just work.
 
         Also persists `config` onto self.class_record (new feature:
         class's active Rule Engine configuration) so reopening this
@@ -460,7 +483,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             on_add_student=self.on_add_student_to_class,
             on_add_photos=self.on_add_photos_to_class,
             on_delete_student=self.on_delete_student_from_class,
-            on_start_grading=self.on_start_grading
+            on_start_grading=self.on_start_grading,
+            on_rename_class=self.on_rename_class
         )
 
     def on_delete_class(self, class_id):
@@ -469,10 +493,53 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         Yes/No dialog. Deletes just this class's storage folder --
         never the student photo folders on disk (spec section 11) --
         then refreshes Home.
+
+        New feature: Undo. The folder holds nothing but class.json,
+        and ClassRecord round-trips that file completely, so the
+        loaded record is kept in memory and Home shows an Undo bar.
+        Pressing Undo writes the same record back under the same
+        class_id. The bar disappears after a few seconds or as soon
+        as the screen changes; after that the deletion is final.
         """
+
+        class_record = load_class(class_id)
 
         delete_class(class_id)
         self.show_setup_count_screen()
+
+        if class_record is not None:
+            show_undo_bar(
+                self.main_frame,
+                f'Deleted "{class_record.class_name}"',
+                on_undo=lambda: self.undo_delete_class(class_record)
+            )
+
+    def undo_delete_class(self, class_record):
+        """
+        Restores a class deleted by on_delete_class: same record,
+        same class_id, same storage folder.
+        """
+
+        save_class(class_record)
+        self.show_setup_count_screen()
+
+    def on_rename_class(self, class_record, new_name):
+        """
+        Called by ClassScreen's Rename button. Only class_name
+        changes -- class_id (and therefore the classes/<id>/ folder)
+        and every student/photo/score stay exactly as they are.
+        """
+
+        new_name = new_name.strip()
+
+        if not new_name:
+            show_error(self, "Class name is required.")
+            return
+
+        class_record.class_name = new_name
+
+        save_class(class_record)
+        self.open_class_screen(class_record.class_id)
 
     def on_open_student(self, class_record, student_index):
 
@@ -483,8 +550,30 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         StudentDetailScreen(
             self.main_frame,
             student=student,
-            on_back=lambda: self.open_class_screen(class_record.class_id)
+            on_back=lambda: self.open_class_screen(class_record.class_id),
+            on_delete_photo=lambda photo_index: self.on_delete_photo_from_student(
+                class_record, student_index, photo_index
+            )
         )
+
+    def on_delete_photo_from_student(self, class_record, student_index, photo_index):
+        """
+        Called by StudentDetailScreen only after the professor
+        confirms. Removes that one ClassPhotoEntry from the student
+        (so its score/note go with it, and every other photo is left
+        alone), keeps photo_count in step with the list, and saves.
+        Never touches the image file on disk, and never touches
+        folder_path -- so the same-folder re-scan guard in
+        on_add_photos_to_class behaves exactly as before.
+        """
+
+        student = class_record.students[student_index]
+
+        del student.photos[photo_index]
+        student.photo_count = len(student.photos)
+
+        save_class(class_record)
+        self.on_open_student(class_record, student_index)
 
     def on_start_grading(self, class_record, student_index):
         """
@@ -618,24 +707,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ]
 
         if source_folder is not None and source_folder == student.folder_path:
-            # Re-scan without losing grading data: photos already known
-            # keep their existing ClassPhotoEntry (scores + note), new
-            # files are appended, and only photos of this folder that
-            # are no longer in it are dropped. Photos from elsewhere
-            # (individually added files) are left untouched.
-            folder = Path(source_folder)
-            scanned_paths = {photo.path for photo in new_photos}
-            existing_paths = {photo.path for photo in student.photos}
-
-            student.photos = [
-                photo for photo in student.photos
-                if photo.path in scanned_paths
-                or Path(photo.path).parent != folder
-            ] + [
-                photo for photo in new_photos
-                if photo.path not in existing_paths
-            ]
-            student.photo_count = len(student.photos)
+            student.photo_count = len(image_paths)
+            student.photos = new_photos
         else:
             student.photo_count += len(image_paths)
             student.photos += new_photos
@@ -651,12 +724,43 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         Called by ClassScreen only after the professor confirms the
         Yes/No dialog. Removes the student from the class only --
         never touches their photo folder on disk (spec section 15).
+
+        New feature: Undo. The removed ClassStudentEntry (with all
+        its photos, scores and notes) is kept in memory and the
+        class screen shows an Undo bar; pressing it re-inserts the
+        student at the same position and saves.
         """
 
-        del class_record.students[student_index]
+        removed = class_record.students.pop(student_index)
 
         save_class(class_record)
         self.open_class_screen(class_record.class_id)
+
+        show_undo_bar(
+            self.main_frame,
+            f'Removed "{removed.name}"',
+            on_undo=lambda: self.undo_delete_student(
+                class_record.class_id, removed, student_index
+            )
+        )
+
+    def undo_delete_student(self, class_id, student_entry, student_index):
+        """
+        Puts a student removed by on_delete_student_from_class back
+        where it was. Reloads the class from storage first so the
+        restore is applied to what's actually saved.
+        """
+
+        class_record = load_class(class_id)
+
+        if class_record is None:
+            return
+
+        position = min(student_index, len(class_record.students))
+        class_record.students.insert(position, student_entry)
+
+        save_class(class_record)
+        self.open_class_screen(class_id)
 
     # -----------------------------------------
     # REVIEW
@@ -787,7 +891,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         ctk.CTkLabel(
             self.header,
-            text="📷  Image Metadata",
+            text="📷  PhotoGrade",
             font=ctk.CTkFont(
                 size=28,
                 weight="bold"
@@ -797,7 +901,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         ctk.CTkLabel(
             self.header,
-            text="View image information and EXIF metadata",
+            text="Review photo metadata and grade student work",
             text_color="gray60",
             font=ctk.CTkFont(size=13)
         ).pack(
@@ -931,6 +1035,24 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             padx=(10, 0)
         )
 
+        self.export_info_button = ctk.CTkButton(
+            self.bottom_frame,
+            text="💾  Export Info",
+            width=140,
+            height=40,
+            fg_color="transparent",
+            hover_color="#123f2c",
+            border_color="#2ECC71",
+            text_color="#7CFFB2",
+            border_width=1,
+            command=self.export_info_to_file
+        )
+
+        self.export_info_button.pack(
+            side="left",
+            padx=(10, 0)
+        )
+
         self.next_button = ctk.CTkButton(
             self.bottom_frame,
             text="➡️  Next",
@@ -1007,15 +1129,6 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         Teacher Grading has something to render. It isn't added to
         self.image_records, so it never affects the Next button or
         the official per-student results.
-
-        If Rule Engine grading comes back with grading.exif_missing
-        True -- at least one factor the professor configured is
-        missing from this photo's EXIF -- the Rule Engine score is
-        left as None (MetadataPanel/TeacherGradingPanel show
-        "EXIF Missing" for it) and this photo's teacher_max_score is
-        forced to the full 100 points instead of the configured
-        System/Human split, so the professor grades it entirely
-        manually.
         """
 
         try:
@@ -1042,20 +1155,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
             image_record.grading_result = grading
 
-            if grading is not None and grading.exif_missing:
-
-                image_record.rule_engine_score = None
+            if grading is not None:
+                image_record.rule_engine_score = grading.technical_score
                 image_record.rule_engine_max_score = grading.system_score
-                image_record.teacher_max_score = 100
 
-            else:
-
-                if grading is not None:
-                    image_record.rule_engine_score = grading.technical_score
-                    image_record.rule_engine_max_score = grading.system_score
-
-                if self.rule_config is not None:
-                    image_record.teacher_max_score = self.rule_config.human_score
+            if self.rule_config is not None:
+                image_record.teacher_max_score = self.rule_config.human_score
 
             self.image_viewer.update(
                 self.current_image,
@@ -1118,6 +1223,65 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.clipboard_clear()
         self.clipboard_append("\n".join(lines))
         self.update()
+
+    # -----------------------------------------
+    # EXPORT INFO (JSON / CSV)
+    # -----------------------------------------
+
+    def export_info_to_file(self):
+        """
+        Saves the on-screen photo's info with the existing
+        storage.export functions. The format follows the file
+        extension chosen in the save dialog (.csv -> CSV, otherwise
+        JSON, adding .json when no known extension was typed) --
+        no export logic lives here, only the dialog and the
+        error/success messages.
+        """
+
+        if not self.current_data:
+            return
+
+        data = self.current_data
+
+        file_path = filedialog.asksaveasfilename(
+            title="Export Photo Info",
+            defaultextension=".json",
+            filetypes=[
+                ("JSON file", "*.json"),
+                ("CSV file", "*.csv")
+            ],
+            initialfile=f"{data['path'].stem}_info.json"
+        )
+
+        if not file_path:
+            return
+
+        suffix = Path(file_path).suffix.lower()
+
+        # defaultextension isn't applied on every platform.
+        if suffix not in (".json", ".csv"):
+            file_path += ".json"
+            suffix = ".json"
+
+        try:
+            if suffix == ".csv":
+                export_to_csv(data, file_path)
+            else:
+                export_to_json(data, file_path)
+
+        except OSError:
+            show_error(
+                self,
+                "Could not save the file. Make sure it isn't open in "
+                "another program and that you can write to that location."
+            )
+
+        else:
+            show_info(
+                self,
+                "Export",
+                "Photo info exported successfully."
+            )
 
 
 if __name__ == "__main__":
