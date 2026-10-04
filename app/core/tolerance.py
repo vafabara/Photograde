@@ -1,11 +1,15 @@
 """
 Automatic tolerance calculation (spec section 6).
 
-The professor never sets Tolerance directly. For each Rule, the
-system widens the Minimum/Maximum range by a percentage of the
-range's own width, capped at MAX_TOLERANCE_PERCENT. A value inside
-that widened range but outside the original range is YELLOW;
-anything further out is RED.
+The professor never sets Tolerance per Rule directly. For each Rule,
+the system widens the Minimum/Maximum range by a percentage of the
+range's own width. A value inside that widened range but outside the
+original range is YELLOW; anything further out is RED.
+
+The percentage is the Rule's own `tolerance_percent` if it has one
+(set from Settings -> Default Tolerance when the Rule was created),
+otherwise MAX_TOLERANCE_PERCENT -- so every Rule saved before
+Settings existed behaves exactly as before.
 
 Because the widening is a percentage of each Rule's own width, two
 different factors (e.g. ISO 200-600 vs. Aperture f/4-f/8) each get a
@@ -22,6 +26,12 @@ def compute_tolerance(rule):
     not a percentage.
     """
 
+    percent = (
+        MAX_TOLERANCE_PERCENT
+        if rule.tolerance_percent is None
+        else rule.tolerance_percent
+    )
+
     range_width = rule.maximum - rule.minimum
 
     if range_width <= 0:
@@ -29,9 +39,9 @@ def compute_tolerance(rule):
         # tolerance, making it impossible to ever score YELLOW.
         # Fall back to a tolerance based on the value itself.
         reference = rule.maximum if rule.maximum else 1
-        return abs(reference) * MAX_TOLERANCE_PERCENT
+        return abs(reference) * percent
 
-    return range_width * MAX_TOLERANCE_PERCENT
+    return range_width * percent
 
 
 def tolerance_bounds(rule):

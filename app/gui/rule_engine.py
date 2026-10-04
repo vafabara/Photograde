@@ -7,7 +7,7 @@ from ..core.rules import (
     build_rule,
     validate_score_split,
 )
-from .widgets import show_confirm, show_prompt
+from .widgets import show_prompt
 
 
 class RuleEngineScreen:
@@ -32,10 +32,11 @@ class RuleEngineScreen:
     refreshing the list is the caller's job (same "screen renders,
     App persists" split used everywhere else in the app).
 
-    Deleting and renaming a preset follow the same split:
-    `on_delete_preset(name)` is only called after the professor
-    confirms, and `on_rename_preset(old_name, new_name)` only after a
-    non-blank, non-clashing new name was entered.
+    New feature: Settings defaults. `default_system_score` pre-fills
+    the System Score box, and `default_tolerance_percent` (a
+    percentage like 15) is the tolerance given to every NEW Rule
+    this screen builds. Both only affect configurations created
+    here -- a preset that is loaded keeps its own saved tolerance.
     """
 
     def __init__(
@@ -46,17 +47,21 @@ class RuleEngineScreen:
         on_save_preset=None,
         presets=None,
         banner_text=None,
-        on_delete_preset=None,
-        on_rename_preset=None,
+        default_system_score=None,
+        default_tolerance_percent=None,
     ):
 
         self.on_continue = on_continue
         self.on_skip = on_skip
         self.on_save_preset = on_save_preset
-        self.on_delete_preset = on_delete_preset
-        self.on_rename_preset = on_rename_preset
         self.presets = presets or {}
+        self.default_tolerance_percent = default_tolerance_percent
         self.factor_entries = {}
+
+        # {factor: tolerance fraction} for rules loaded from a
+        # preset, so they keep the tolerance they were saved with
+        # instead of being re-stamped with today's default.
+        self.loaded_tolerance = {}
 
         self.container = ctk.CTkFrame(
             parent,
@@ -109,6 +114,10 @@ class RuleEngineScreen:
 
         self.create_factor_rows()
         self.create_score_split_row()
+
+        if default_system_score is not None:
+            self.system_score_entry.insert(0, str(int(default_system_score)))
+            self.update_human_score_preview()
 
         self.error_label = ctk.CTkLabel(
             self.container,
@@ -338,57 +347,6 @@ class RuleEngineScreen:
             command=self.handle_save_preset
         ).pack(side="left")
 
-        # Rename / Delete act on whichever preset is selected in the
-        # dropdown above. Kept on their own row so the first row
-        # doesn't outgrow the window's minimum width.
-        manage_row = ctk.CTkFrame(
-            self.container,
-            fg_color="transparent"
-        )
-
-        manage_row.pack(
-            fill="x",
-            pady=(8, 0)
-        )
-
-        ctk.CTkButton(
-            manage_row,
-            text="Rename Selected",
-            width=140,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=self.handle_rename_preset
-        ).pack(
-            side="left",
-            padx=(0, 10)
-        )
-
-        ctk.CTkButton(
-            manage_row,
-            text="Delete Selected",
-            width=140,
-            fg_color="transparent",
-            hover_color="#3a1f1f",
-            border_color="#FF6B6B",
-            border_width=1,
-            text_color="#FF6B6B",
-            command=self.handle_delete_preset
-        ).pack(side="left")
-
-    def selected_preset_name(self):
-        """
-        The preset currently chosen in the dropdown, or None when
-        there are no saved presets (the dropdown then only shows the
-        disabled "No saved presets" placeholder).
-        """
-
-        name = self.preset_menu.get()
-
-        return name if name in self.presets else None
-
     def handle_load_preset(self):
         """
         Loads the selected preset straight into the existing
@@ -408,6 +366,15 @@ class RuleEngineScreen:
             return
 
         rules_by_factor = {rule.factor: rule for rule in config.rules}
+
+        # Remember each loaded rule's own tolerance (None for presets
+        # saved before tolerance was stored per rule -- those fall
+        # back to the default in build_config()).
+        self.loaded_tolerance = {
+            rule.factor: rule.tolerance_percent
+            for rule in config.rules
+            if rule.tolerance_percent is not None
+        }
 
         for factor, (min_entry, max_entry) in self.factor_entries.items():
 
@@ -451,61 +418,26 @@ class RuleEngineScreen:
             on_submit=lambda name: self.on_save_preset(name, config)
         )
 
-    def handle_delete_preset(self):
-        """
-        Asks for confirmation (same show_confirm used for deleting a
-        class/student) and only then reports the deletion to App,
-        which removes just that preset from storage.
-        """
-
-        self.error_label.configure(text="")
-
-        name = self.selected_preset_name()
-
-        if name is None or not self.on_delete_preset:
-            return
-
-        show_confirm(
-            self.container,
-            f'Are you sure you want to delete\nthe preset "{name}"?',
-            on_yes=lambda: self.on_delete_preset(name)
-        )
-
-    def handle_rename_preset(self):
-        """
-        Asks for the new name with the same show_prompt used for
-        naming a new preset. A name that's already taken by a
-        different preset is rejected here with a message under the
-        form, so a rename can never overwrite another preset.
-        """
-
-        self.error_label.configure(text="")
-
-        name = self.selected_preset_name()
-
-        if name is None or not self.on_rename_preset:
-            return
-
-        def handle_submit(new_name):
-
-            if new_name != name and new_name in self.presets:
-                self.error_label.configure(
-                    text=f'A preset named "{new_name}" already exists.'
-                )
-                return
-
-            self.on_rename_preset(name, new_name)
-
-        show_prompt(
-            self.container,
-            "Rename Preset",
-            f'New name for "{name}":',
-            on_submit=handle_submit
-        )
-
     # -----------------------------------------
     # VALIDATION / SUBMIT
     # -----------------------------------------
+
+    def tolerance_for(self, factor):
+        """
+        The tolerance fraction a Rule built for `factor` should get:
+        the one it was loaded with from a preset, else the Settings
+        default, else None (the Rule Engine's built-in 15%).
+        """
+
+        loaded = self.loaded_tolerance.get(factor)
+
+        if loaded is not None:
+            return loaded
+
+        if self.default_tolerance_percent is not None:
+            return self.default_tolerance_percent / 100
+
+        return None
 
     def build_config(self):
         """
@@ -541,7 +473,14 @@ class RuleEngineScreen:
                 return None, f"{FACTORS[factor]['label']}: values must be numbers."
 
             try:
-                rules.append(build_rule(factor, minimum, maximum))
+                rules.append(
+                    build_rule(
+                        factor,
+                        minimum,
+                        maximum,
+                        tolerance_percent=self.tolerance_for(factor)
+                    )
+                )
             except RuleError as error:
                 return None, str(error)
 

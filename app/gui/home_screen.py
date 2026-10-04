@@ -20,20 +20,29 @@ class HomeScreen:
     JSON itself (spec section 17):
 
       - clicking a class name calls `on_open_class(class_id)`
-      - clicking Delete asks for confirmation right here, and only
-        calls `on_delete_class(class_id)` if the professor picks Yes
-
-    New feature: How to Use. The Welcome card has a "How to Use"
-    button that calls `on_help()`; App decides what to show.
+      - clicking Delete asks for confirmation right here (unless
+        `confirm_delete` is False -- Settings), and only calls
+        `on_delete_class(class_id)` once that's settled
+      - clicking the ⚙ button calls `on_open_settings()`
     """
 
-    def __init__(self, parent, classes, on_continue, on_open_class, on_delete_class, on_help=None):
+    def __init__(
+        self,
+        parent,
+        classes,
+        on_continue,
+        on_open_class,
+        on_delete_class,
+        on_open_settings=None,
+        confirm_delete=True,
+    ):
 
         self.classes = classes
         self.on_continue = on_continue
         self.on_open_class = on_open_class
         self.on_delete_class = on_delete_class
-        self.on_help = on_help
+        self.on_open_settings = on_open_settings
+        self.confirm_delete = confirm_delete
 
         self.container = ctk.CTkFrame(
             parent,
@@ -93,16 +102,38 @@ class HomeScreen:
             pady=(0, 15)
         )
 
-        ctk.CTkLabel(
+        # Title row: welcome title on the left, Settings button on
+        # the right.
+        title_row = ctk.CTkFrame(
             card,
-            text="Welcome to PhotoGrade",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(
-            anchor="w",
+            fg_color="transparent"
+        )
+
+        title_row.pack(
+            fill="x",
             padx=20,
             pady=(20, 10)
         )
+
+        ctk.CTkLabel(
+            title_row,
+            text="Welcome to PhotoGrade",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#7CFFB2"
+        ).pack(side="left")
+
+        if self.on_open_settings:
+            ctk.CTkButton(
+                title_row,
+                text="⚙",
+                width=34,
+                height=30,
+                font=ctk.CTkFont(size=18),
+                fg_color="transparent",
+                hover_color="#123f2c",
+                text_color="#7CFFB2",
+                command=self.on_open_settings
+            ).pack(side="right")
 
         ctk.CTkLabel(
             card,
@@ -115,23 +146,6 @@ class HomeScreen:
             font=ctk.CTkFont(size=13),
             justify="left",
             wraplength=380
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(0, 15)
-        )
-
-        ctk.CTkButton(
-            card,
-            text="❓  How to Use",
-            width=150,
-            height=32,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=self.on_help
         ).pack(
             anchor="w",
             padx=20,
@@ -274,8 +288,13 @@ class HomeScreen:
         """
         Shows a Yes/No confirmation (spec section 11) and only calls
         on_delete_class -- App's job, not this screen's, to actually
-        touch storage -- if the professor confirms.
+        touch storage -- if the professor confirms. With "Confirm
+        before deleting" turned off in Settings, deletes right away.
         """
+
+        if not self.confirm_delete:
+            self.on_delete_class(class_record.class_id)
+            return
 
         show_confirm(
             self.previous_classes_frame,

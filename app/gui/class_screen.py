@@ -4,7 +4,7 @@ import customtkinter as ctk
 from tkinter import filedialog
 
 from ..core.image import scan_student_folder, validate_selected_files, FolderValidationError
-from .widgets import show_error, show_confirm, show_prompt
+from .widgets import show_error, show_confirm
 
 
 class ClassScreen:
@@ -25,8 +25,8 @@ class ClassScreen:
 
         ClassScreen  ->  App  ->  class_storage  ->  classes/<id>/class.json
 
-    New feature: Rename Class. The header's Rename button asks for a
-    new name and calls `on_rename_class(class_record, new_name)`.
+    `confirm_delete` (Settings: "Confirm before deleting") controls
+    whether removing a student asks Yes/No first.
     """
 
     def __init__(
@@ -39,7 +39,7 @@ class ClassScreen:
         on_add_photos,
         on_delete_student,
         on_start_grading,
-        on_rename_class=None,
+        confirm_delete=True,
     ):
 
         self.class_record = class_record
@@ -49,7 +49,7 @@ class ClassScreen:
         self.on_add_photos = on_add_photos
         self.on_delete_student = on_delete_student
         self.on_start_grading = on_start_grading
-        self.on_rename_class = on_rename_class
+        self.confirm_delete = confirm_delete
 
         self.container = ctk.CTkFrame(
             parent,
@@ -105,45 +105,6 @@ class ClassScreen:
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color="#7CFFB2"
         ).pack(side="left")
-
-        ctk.CTkButton(
-            header,
-            text="✏️ Rename",
-            width=90,
-            height=28,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=self.handle_rename_class
-        ).pack(
-            side="left",
-            padx=(15, 0)
-        )
-
-    # -----------------------------------------
-    # RENAME CLASS
-    # -----------------------------------------
-
-    def handle_rename_class(self):
-        """
-        Asks for the new name (same show_prompt used for naming a
-        preset) and hands it to App. Only the class's display name
-        changes -- its id and its storage folder stay as they are.
-        """
-
-        if not self.on_rename_class:
-            return
-
-        show_prompt(
-            self.container,
-            "Rename Class",
-            f'New name for "{self.class_record.class_name}":',
-            on_submit=lambda new_name: self.on_rename_class(
-                self.class_record, new_name
-            )
-        )
 
     # -----------------------------------------
     # STUDENT LIST
@@ -378,6 +339,12 @@ class ClassScreen:
     # -----------------------------------------
 
     def handle_delete_student(self, index):
+
+        # "Confirm before deleting" off in Settings -> delete right
+        # away, same as before confirmations existed.
+        if not self.confirm_delete:
+            self.on_delete_student(self.class_record, index)
+            return
 
         student = self.class_record.students[index]
 

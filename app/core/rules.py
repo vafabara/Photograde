@@ -59,12 +59,26 @@ class Rule:
     minimum: float
     maximum: float
 
+    # New (Settings feature): the tolerance this Rule was created
+    # with, as a fraction of its range (0.15 = 15%). None means "use
+    # tolerance.MAX_TOLERANCE_PERCENT" -- which is what every Rule
+    # saved before this field existed does, so old classes and
+    # presets grade exactly as they always did.
+    tolerance_percent: float | None = None
+
     def to_dict(self):
-        return {
+        data = {
             "factor": self.factor,
             "minimum": self.minimum,
             "maximum": self.maximum,
         }
+
+        # Only written when set, so a Rule without a custom
+        # tolerance serializes exactly as it did before.
+        if self.tolerance_percent is not None:
+            data["tolerance_percent"] = self.tolerance_percent
+
+        return data
 
     @classmethod
     def from_dict(cls, data):
@@ -72,6 +86,7 @@ class Rule:
             factor=data["factor"],
             minimum=data["minimum"],
             maximum=data["maximum"],
+            tolerance_percent=data.get("tolerance_percent"),
         )
 
 
@@ -144,9 +159,13 @@ def validate_rule(factor, minimum, maximum):
         )
 
 
-def build_rule(factor, minimum, maximum):
+def build_rule(factor, minimum, maximum, tolerance_percent=None):
     """
     Validate and construct a Rule. Raises RuleError on invalid input.
+
+    `tolerance_percent` (optional, a fraction like 0.15) is stored on
+    the Rule so it keeps its own tolerance even if the default in
+    Settings changes later.
     """
 
     validate_rule(factor, minimum, maximum)
@@ -155,6 +174,9 @@ def build_rule(factor, minimum, maximum):
         factor=factor,
         minimum=float(minimum),
         maximum=float(maximum),
+        tolerance_percent=(
+            None if tolerance_percent is None else float(tolerance_percent)
+        ),
     )
 
 

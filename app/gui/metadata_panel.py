@@ -27,10 +27,18 @@ FACTOR_LABEL_ATTRS = {
 
 
 class MetadataPanel:
+    """
+    `show_exif` (Settings: "Show EXIF information") controls whether
+    the Camera Information section is displayed. The section is
+    always built and still updated -- it's just not packed onto the
+    screen when show_exif is False -- so nothing else in this class
+    needs to know about the setting.
+    """
 
-    def __init__(self, parent, on_teacher_confirm=None):
+    def __init__(self, parent, on_teacher_confirm=None, show_exif=True):
 
         self.on_teacher_confirm = on_teacher_confirm
+        self.show_exif = show_exif
 
         self.frame = ctk.CTkScrollableFrame(
             parent,
@@ -147,8 +155,19 @@ class MetadataPanel:
 
     def create_camera_section(self):
 
-        self.camera_title = ctk.CTkLabel(
+        # Everything in the Camera Information section lives in its
+        # own frame so the whole section can be hidden at once
+        # (Settings: Show EXIF information).
+        self.camera_frame = ctk.CTkFrame(
             self.frame,
+            fg_color="transparent"
+        )
+
+        if self.show_exif:
+            self.camera_frame.pack(fill="x")
+
+        self.camera_title = ctk.CTkLabel(
+            self.camera_frame,
             text="📸  Camera Information",
             font=ctk.CTkFont(
                 size=20,
@@ -163,52 +182,52 @@ class MetadataPanel:
         )
 
         self.make_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Make: —"
         )
 
         self.model_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Model: —"
         )
 
         self.lens_model_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Lens Model: —"
         )
 
         self.iso_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "ISO: —"
         )
 
         self.aperture_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Aperture: —"
         )
 
         self.shutter_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Shutter Speed: —"
         )
 
         self.focal_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Focal Length: —"
         )
 
         self.date_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Date Taken: —"
         )
 
         self.flash_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "Flash: —"
         )
 
         self.white_balance_label = create_info_label(
-            self.frame,
+            self.camera_frame,
             "White Balance: —"
         )
 

@@ -21,14 +21,15 @@ from ..core.class_model import (
 )
 from ..storage.class_storage import save_class, load_all_classes, load_class, delete_class
 from ..storage.rule_presets import load_presets, save_preset
+from ..storage.settings_storage import load_settings, save_settings, SettingsStorageError
 
 from .class_screen import ClassScreen
-from .help import HelpScreen
 from .home_screen import HomeScreen
 from .image_viewer import ImageViewer
 from .metadata_panel import MetadataPanel
 from .results_screen import ClassResultsScreen
 from .rule_engine import RuleEngineScreen
+from .settings_screen import SettingsScreen
 from .student_detail import StudentDetailScreen
 from .student_results_detail import StudentResultsDetailScreen
 from .student_setup import StudentFoldersScreen
@@ -46,7 +47,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.geometry("1050x700")
         self.minsize(900, 600)
 
-        ctk.set_appearance_mode("dark")
+        # Theme comes from Settings (Dark by default).
+        ctk.set_appearance_mode(load_settings().theme)
         ctk.set_default_color_theme("green")
 
         # Current image
@@ -137,6 +139,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.clear_main_frame()
 
         classes = load_all_classes()
+        settings = load_settings()
 
         HomeScreen(
             self.main_frame,
@@ -144,21 +147,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             on_continue=self.on_home_continue,
             on_open_class=self.on_open_class,
             on_delete_class=self.on_delete_class,
-            on_help=self.show_help_screen
-        )
-
-    def show_help_screen(self):
-        """
-        New feature: How to Use. Static Help page opened from the
-        Home Screen; Back returns to Home through the same
-        show_setup_count_screen every other screen already uses.
-        """
-
-        self.clear_main_frame()
-
-        HelpScreen(
-            self.main_frame,
-            on_back=self.show_setup_count_screen
+            on_open_settings=self.show_settings_screen,
+            confirm_delete=settings.confirm_delete
         )
 
     def on_home_continue(self, class_name, student_count):
@@ -172,6 +162,44 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.student_count = student_count
 
         self.show_setup_names_screen()
+
+    # -----------------------------------------
+    # SETTINGS (new feature)
+    # -----------------------------------------
+
+    def show_settings_screen(self):
+        """
+        Opened from the Home screen's ⚙ button. Settings are loaded
+        fresh from storage every time the screen opens.
+        """
+
+        self.clear_main_frame()
+
+        SettingsScreen(
+            self.main_frame,
+            settings=load_settings(),
+            on_save=self.on_settings_saved,
+            on_back=self.show_setup_count_screen
+        )
+
+    def on_settings_saved(self, settings):
+        """
+        Called by SettingsScreen with already-validated settings.
+        Persists them and applies the theme right away; every other
+        setting is read fresh by the screen it affects the next time
+        that screen is built. Returns False if saving failed, so the
+        Settings screen doesn't claim success.
+        """
+
+        try:
+            save_settings(settings)
+        except SettingsStorageError as error:
+            show_error(self, str(error))
+            return False
+
+        ctk.set_appearance_mode(settings.theme)
+
+        return True
 
     # -----------------------------------------
     # SETUP STEP 2
@@ -360,11 +388,18 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         preset re-opens this same screen (with the same
         on_continue/on_skip/banner_text it was already showing) so
         the preset list reflects the save immediately.
+
+        New feature: Settings. The default System weight and default
+        tolerance are read fresh from settings each time, and only
+        ever pre-fill a configuration that is being created here --
+        classes that already have a saved rule_config never come
+        through this screen.
         """
 
         self.clear_main_frame()
 
         presets = load_presets()
+        settings = load_settings()
 
         def handle_save_preset(name, config):
             save_preset(name, config)
@@ -376,7 +411,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             on_skip=on_skip,
             on_save_preset=handle_save_preset,
             presets=presets,
-            banner_text=banner_text
+            banner_text=banner_text,
+            default_system_score=settings.system_weight,
+            default_tolerance_percent=settings.tolerance_percent
         )
 
     def on_rules_configured(self, config):
@@ -384,11 +421,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         Applies the professor's System/Human score split to every
         photo in the review queue. The split itself always comes
         from `config` -- nothing here hard-codes a specific
-        weighting -- so 40/60, 30/70, etc. all just work. This is
-        just the default; load_and_display() overrides it per photo
-        to teacher_max_score=100 if that photo's EXIF turns out to
-        be missing a configured factor, since that isn't known until
-        the photo is actually loaded and graded.
+        weighting -- so 40/60, 30/70, etc. all just work.
 
         Also persists `config` onto self.class_record (new feature:
         class's active Rule Engine configuration) so reopening this
@@ -476,15 +509,17 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             on_add_student=self.on_add_student_to_class,
             on_add_photos=self.on_add_photos_to_class,
             on_delete_student=self.on_delete_student_from_class,
-            on_start_grading=self.on_start_grading
+            on_start_grading=self.on_start_grading,
+            confirm_delete=load_settings().confirm_delete
         )
 
     def on_delete_class(self, class_id):
         """
         Called by HomeScreen only after the professor confirms the
-        Yes/No dialog. Deletes just this class's storage folder --
-        never the student photo folders on disk (spec section 11) --
-        then refreshes Home.
+        Yes/No dialog (or straight away if "Confirm before deleting"
+        is off in Settings). Deletes just this class's storage
+        folder -- never the student photo folders on disk (spec
+        section 11) -- then refreshes Home.
         """
 
         delete_class(class_id)
@@ -634,24 +669,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ]
 
         if source_folder is not None and source_folder == student.folder_path:
-            # Re-scan without losing grading data: photos already known
-            # keep their existing ClassPhotoEntry (scores + note), new
-            # files are appended, and only photos of this folder that
-            # are no longer in it are dropped. Photos from elsewhere
-            # (individually added files) are left untouched.
-            folder = Path(source_folder)
-            scanned_paths = {photo.path for photo in new_photos}
-            existing_paths = {photo.path for photo in student.photos}
-
-            student.photos = [
-                photo for photo in student.photos
-                if photo.path in scanned_paths
-                or Path(photo.path).parent != folder
-            ] + [
-                photo for photo in new_photos
-                if photo.path not in existing_paths
-            ]
-            student.photo_count = len(student.photos)
+            student.photo_count = len(image_paths)
+            student.photos = new_photos
         else:
             student.photo_count += len(image_paths)
             student.photos += new_photos
@@ -665,8 +684,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def on_delete_student_from_class(self, class_record, student_index):
         """
         Called by ClassScreen only after the professor confirms the
-        Yes/No dialog. Removes the student from the class only --
-        never touches their photo folder on disk (spec section 15).
+        Yes/No dialog (or straight away if "Confirm before deleting"
+        is off in Settings). Removes the student from the class only
+        -- never touches their photo folder on disk (spec section 15).
         """
 
         del class_record.students[student_index]
@@ -847,7 +867,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.metadata_panel = MetadataPanel(
             self.content,
-            on_teacher_confirm=self.on_teacher_confirm
+            on_teacher_confirm=self.on_teacher_confirm,
+            show_exif=load_settings().show_exif
         )
 
     # -----------------------------------------
@@ -1023,15 +1044,6 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         Teacher Grading has something to render. It isn't added to
         self.image_records, so it never affects the Next button or
         the official per-student results.
-
-        If Rule Engine grading comes back with grading.exif_missing
-        True -- at least one factor the professor configured is
-        missing from this photo's EXIF -- the Rule Engine score is
-        left as None (MetadataPanel/TeacherGradingPanel show
-        "EXIF Missing" for it) and this photo's teacher_max_score is
-        forced to the full 100 points instead of the configured
-        System/Human split, so the professor grades it entirely
-        manually.
         """
 
         try:
@@ -1058,20 +1070,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
             image_record.grading_result = grading
 
-            if grading is not None and grading.exif_missing:
-
-                image_record.rule_engine_score = None
+            if grading is not None:
+                image_record.rule_engine_score = grading.technical_score
                 image_record.rule_engine_max_score = grading.system_score
-                image_record.teacher_max_score = 100
 
-            else:
-
-                if grading is not None:
-                    image_record.rule_engine_score = grading.technical_score
-                    image_record.rule_engine_max_score = grading.system_score
-
-                if self.rule_config is not None:
-                    image_record.teacher_max_score = self.rule_config.human_score
+            if self.rule_config is not None:
+                image_record.teacher_max_score = self.rule_config.human_score
 
             self.image_viewer.update(
                 self.current_image,
