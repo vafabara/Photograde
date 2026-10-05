@@ -4,3 +4,4 @@ piexif
 tkinterdnd2
 pandas
 openpyxl
+pytest
