@@ -27,6 +27,13 @@ class ClassScreen:
 
     `confirm_delete` (Settings: "Confirm before deleting") controls
     whether removing a student asks Yes/No first.
+
+    New feature: Student Search. A search field above the student
+    list filters the rows by student name as the professor types
+    (case-insensitive). It only changes which rows are displayed --
+    class_record.students is never modified, and every row keeps its
+    real index in that list, so open/delete/add-photos/start-grading
+    always act on the right student even while a filter is active.
     """
 
     def __init__(
@@ -50,6 +57,11 @@ class ClassScreen:
         self.on_delete_student = on_delete_student
         self.on_start_grading = on_start_grading
         self.confirm_delete = confirm_delete
+
+        # Widgets currently shown inside the student list (student
+        # rows or an empty-state message), so a re-render can remove
+        # exactly those and nothing else.
+        self.row_widgets = []
 
         self.container = ctk.CTkFrame(
             parent,
@@ -134,6 +146,24 @@ class ClassScreen:
             pady=(20, 10)
         )
 
+        # Student search (new feature). Packed before the list so it
+        # sits above it. Every key release re-filters the list.
+        self.student_search_entry = ctk.CTkEntry(
+            card,
+            placeholder_text="Search students..."
+        )
+
+        self.student_search_entry.pack(
+            fill="x",
+            padx=20,
+            pady=(0, 10)
+        )
+
+        self.student_search_entry.bind(
+            "<KeyRelease>",
+            lambda event: self.render_student_list()
+        )
+
         self.student_list_frame = ctk.CTkScrollableFrame(
             card,
             fg_color="transparent"
@@ -146,18 +176,56 @@ class ClassScreen:
             pady=(0, 15)
         )
 
+        self.render_student_list()
+
+    def render_student_list(self):
+        """
+        (Re)builds the student rows from class_record.students,
+        showing only students whose name contains the search text
+        (case-insensitive). An empty search shows every student, in
+        the original order. Never modifies class_record.students.
+
+        Each row is created with the student's index in the *full*
+        list (not its position among the filtered rows), because
+        every row callback uses that index to find the student in
+        class_record.students.
+        """
+
+        for widget in self.row_widgets:
+            widget.destroy()
+
+        self.row_widgets = []
+
         if not self.class_record.students:
-
-            ctk.CTkLabel(
-                self.student_list_frame,
-                text="No students yet.",
-                text_color="gray60"
-            ).pack(pady=20)
-
+            self.show_empty_message("No students yet.")
             return
 
-        for index, student in enumerate(self.class_record.students):
+        query = self.student_search_entry.get().strip().lower()
+
+        matches = [
+            (index, student)
+            for index, student in enumerate(self.class_record.students)
+            if query in student.name.lower()
+        ]
+
+        if not matches:
+            self.show_empty_message("No matching students.")
+            return
+
+        for index, student in matches:
             self.create_student_row(index, student)
+
+    def show_empty_message(self, text):
+
+        label = ctk.CTkLabel(
+            self.student_list_frame,
+            text=text,
+            text_color="gray60"
+        )
+
+        label.pack(pady=20)
+
+        self.row_widgets.append(label)
 
     def create_student_row(self, index, student):
 
@@ -170,6 +238,8 @@ class ClassScreen:
             fill="x",
             pady=4
         )
+
+        self.row_widgets.append(row)
 
         name_label = ctk.CTkLabel(
             row,

@@ -24,6 +24,11 @@ class HomeScreen:
         `confirm_delete` is False -- Settings), and only calls
         `on_delete_class(class_id)` once that's settled
       - clicking the ⚙ button calls `on_open_settings()`
+
+    New feature: Class Search. A search field above the Previous
+    Classes list filters the rows by class name as the professor
+    types (case-insensitive). It only changes which rows are
+    displayed -- `self.classes` itself is never modified.
     """
 
     def __init__(
@@ -43,6 +48,11 @@ class HomeScreen:
         self.on_delete_class = on_delete_class
         self.on_open_settings = on_open_settings
         self.confirm_delete = confirm_delete
+
+        # Widgets currently shown inside the Previous Classes list
+        # (class rows or an empty-state message), so a re-render can
+        # remove exactly those and nothing else.
+        self.row_widgets = []
 
         self.container = ctk.CTkFrame(
             parent,
@@ -179,6 +189,24 @@ class HomeScreen:
             pady=(20, 10)
         )
 
+        # Class search (new feature). Packed before the list so it
+        # sits above it. Every key release re-filters the list.
+        self.class_search_entry = ctk.CTkEntry(
+            card,
+            placeholder_text="Search classes..."
+        )
+
+        self.class_search_entry.pack(
+            fill="x",
+            padx=20,
+            pady=(0, 10)
+        )
+
+        self.class_search_entry.bind(
+            "<KeyRelease>",
+            lambda event: self.render_previous_classes()
+        )
+
         # Scrollable list so it works the same way once real
         # classes are loaded in later (same pattern used elsewhere
         # in the app for lists, e.g. RuleEngineScreen's factor list).
@@ -194,18 +222,51 @@ class HomeScreen:
             pady=(0, 15)
         )
 
+        self.render_previous_classes()
+
+    def render_previous_classes(self):
+        """
+        (Re)builds the Previous Classes list from `self.classes`,
+        showing only classes whose name contains the search text
+        (case-insensitive). An empty search shows every class, in
+        the original order. Never modifies `self.classes`.
+        """
+
+        for widget in self.row_widgets:
+            widget.destroy()
+
+        self.row_widgets = []
+
         if not self.classes:
-
-            ctk.CTkLabel(
-                self.previous_classes_frame,
-                text="No classes yet",
-                text_color="gray60"
-            ).pack(pady=20)
-
+            self.show_empty_message("No classes yet")
             return
 
-        for class_record in self.classes:
+        query = self.class_search_entry.get().strip().lower()
+
+        matching_classes = [
+            class_record
+            for class_record in self.classes
+            if query in class_record.class_name.lower()
+        ]
+
+        if not matching_classes:
+            self.show_empty_message("No matching classes")
+            return
+
+        for class_record in matching_classes:
             self.create_previous_class_row(class_record)
+
+    def show_empty_message(self, text):
+
+        label = ctk.CTkLabel(
+            self.previous_classes_frame,
+            text=text,
+            text_color="gray60"
+        )
+
+        label.pack(pady=20)
+
+        self.row_widgets.append(label)
 
     def create_previous_class_row(self, class_record):
         """
@@ -224,6 +285,8 @@ class HomeScreen:
             fill="x",
             pady=4
         )
+
+        self.row_widgets.append(row)
 
         text_column = ctk.CTkFrame(
             row,
