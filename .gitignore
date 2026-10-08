@@ -6,4 +6,4 @@ venv/
 .idea/
 .vscode/
 classes/
-rule_presets.json
+desktop.ini
