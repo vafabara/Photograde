@@ -20,15 +20,14 @@ class HomeScreen:
     JSON itself (spec section 17):
 
       - clicking a class name calls `on_open_class(class_id)`
-      - clicking Delete asks for confirmation right here (unless
-        `confirm_delete` is False -- Settings), and only calls
-        `on_delete_class(class_id)` once that's settled
-      - clicking the ⚙ button calls `on_open_settings()`
+      - clicking Delete asks for confirmation right here, and only
+        calls `on_delete_class(class_id)` if the professor picks Yes
 
-    New feature: Class Search. A search field above the Previous
-    Classes list filters the rows by class name as the professor
-    types (case-insensitive). It only changes which rows are
-    displayed -- `self.classes` itself is never modified.
+    New feature: Grading Progress, Save & Continue. `active_session`
+    is the saved grading session dict App loaded from
+    storage.grading_session (or None). When there is one, a
+    "Continue (ClassName) Grading" card is shown at the top of the
+    left column; clicking it calls `on_continue_grading()`.
     """
 
     def __init__(
@@ -38,21 +37,16 @@ class HomeScreen:
         on_continue,
         on_open_class,
         on_delete_class,
-        on_open_settings=None,
-        confirm_delete=True,
+        active_session=None,
+        on_continue_grading=None,
     ):
 
         self.classes = classes
         self.on_continue = on_continue
         self.on_open_class = on_open_class
         self.on_delete_class = on_delete_class
-        self.on_open_settings = on_open_settings
-        self.confirm_delete = confirm_delete
-
-        # Widgets currently shown inside the Previous Classes list
-        # (class rows or an empty-state message), so a re-render can
-        # remove exactly those and nothing else.
-        self.row_widgets = []
+        self.active_session = active_session
+        self.on_continue_grading = on_continue_grading
 
         self.container = ctk.CTkFrame(
             parent,
@@ -92,9 +86,73 @@ class HomeScreen:
             padx=(15, 0)
         )
 
+        if self.active_session:
+            self.create_continue_card()
+
         self.create_welcome_card()
         self.create_previous_classes_card()
         self.create_new_class_card()
+
+    # -----------------------------------------
+    # LEFT — CONTINUE GRADING CARD
+    # (new feature: Grading Progress, Save & Continue)
+    # -----------------------------------------
+
+    def create_continue_card(self):
+
+        class_name = self.active_session["class_name"]
+        position = self.active_session["current_index"] + 1
+        total = len(self.active_session["photos"])
+
+        card = ctk.CTkFrame(
+            self.left_column,
+            corner_radius=12
+        )
+
+        card.pack(
+            fill="x",
+            pady=(0, 15)
+        )
+
+        ctk.CTkLabel(
+            card,
+            text="Unfinished Grading",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#7CFFB2"
+        ).pack(
+            anchor="w",
+            padx=20,
+            pady=(20, 5)
+        )
+
+        ctk.CTkLabel(
+            card,
+            text=f"Saved at photo {position}/{total}",
+            text_color="gray60",
+            font=ctk.CTkFont(size=13)
+        ).pack(
+            anchor="w",
+            padx=20,
+            pady=(0, 10)
+        )
+
+        ctk.CTkButton(
+            card,
+            text=f"Continue ({class_name}) Grading",
+            height=36,
+            fg_color="#1F8F4C",
+            hover_color="#27AE60",
+            command=self.handle_continue_grading
+        ).pack(
+            fill="x",
+            padx=20,
+            pady=(0, 20)
+        )
+
+    def handle_continue_grading(self):
+
+        if self.on_continue_grading:
+            self.on_continue_grading()
 
     # -----------------------------------------
     # LEFT — WELCOME CARD
@@ -112,38 +170,16 @@ class HomeScreen:
             pady=(0, 15)
         )
 
-        # Title row: welcome title on the left, Settings button on
-        # the right.
-        title_row = ctk.CTkFrame(
-            card,
-            fg_color="transparent"
-        )
-
-        title_row.pack(
-            fill="x",
-            padx=20,
-            pady=(20, 10)
-        )
-
         ctk.CTkLabel(
-            title_row,
+            card,
             text="Welcome to PhotoGrade",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color="#7CFFB2"
-        ).pack(side="left")
-
-        if self.on_open_settings:
-            ctk.CTkButton(
-                title_row,
-                text="⚙",
-                width=34,
-                height=30,
-                font=ctk.CTkFont(size=18),
-                fg_color="transparent",
-                hover_color="#123f2c",
-                text_color="#7CFFB2",
-                command=self.on_open_settings
-            ).pack(side="right")
+        ).pack(
+            anchor="w",
+            padx=20,
+            pady=(20, 10)
+        )
 
         ctk.CTkLabel(
             card,
@@ -189,24 +225,6 @@ class HomeScreen:
             pady=(20, 10)
         )
 
-        # Class search (new feature). Packed before the list so it
-        # sits above it. Every key release re-filters the list.
-        self.class_search_entry = ctk.CTkEntry(
-            card,
-            placeholder_text="Search classes..."
-        )
-
-        self.class_search_entry.pack(
-            fill="x",
-            padx=20,
-            pady=(0, 10)
-        )
-
-        self.class_search_entry.bind(
-            "<KeyRelease>",
-            lambda event: self.render_previous_classes()
-        )
-
         # Scrollable list so it works the same way once real
         # classes are loaded in later (same pattern used elsewhere
         # in the app for lists, e.g. RuleEngineScreen's factor list).
@@ -222,51 +240,18 @@ class HomeScreen:
             pady=(0, 15)
         )
 
-        self.render_previous_classes()
-
-    def render_previous_classes(self):
-        """
-        (Re)builds the Previous Classes list from `self.classes`,
-        showing only classes whose name contains the search text
-        (case-insensitive). An empty search shows every class, in
-        the original order. Never modifies `self.classes`.
-        """
-
-        for widget in self.row_widgets:
-            widget.destroy()
-
-        self.row_widgets = []
-
         if not self.classes:
-            self.show_empty_message("No classes yet")
+
+            ctk.CTkLabel(
+                self.previous_classes_frame,
+                text="No classes yet",
+                text_color="gray60"
+            ).pack(pady=20)
+
             return
 
-        query = self.class_search_entry.get().strip().lower()
-
-        matching_classes = [
-            class_record
-            for class_record in self.classes
-            if query in class_record.class_name.lower()
-        ]
-
-        if not matching_classes:
-            self.show_empty_message("No matching classes")
-            return
-
-        for class_record in matching_classes:
+        for class_record in self.classes:
             self.create_previous_class_row(class_record)
-
-    def show_empty_message(self, text):
-
-        label = ctk.CTkLabel(
-            self.previous_classes_frame,
-            text=text,
-            text_color="gray60"
-        )
-
-        label.pack(pady=20)
-
-        self.row_widgets.append(label)
 
     def create_previous_class_row(self, class_record):
         """
@@ -285,8 +270,6 @@ class HomeScreen:
             fill="x",
             pady=4
         )
-
-        self.row_widgets.append(row)
 
         text_column = ctk.CTkFrame(
             row,
@@ -351,13 +334,8 @@ class HomeScreen:
         """
         Shows a Yes/No confirmation (spec section 11) and only calls
         on_delete_class -- App's job, not this screen's, to actually
-        touch storage -- if the professor confirms. With "Confirm
-        before deleting" turned off in Settings, deletes right away.
+        touch storage -- if the professor confirms.
         """
-
-        if not self.confirm_delete:
-            self.on_delete_class(class_record.class_id)
-            return
 
         show_confirm(
             self.previous_classes_frame,
