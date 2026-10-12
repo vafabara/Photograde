@@ -1,14 +1,13 @@
 import customtkinter as ctk
+from tkinter import TclError
+
+from . import theme
 
 
 def create_info_label(parent, text):
+    """Single full-width text row (kept for compatibility)."""
 
-    label = ctk.CTkLabel(
-        parent,
-        text=text,
-        font=ctk.CTkFont(size=14),
-        anchor="w"
-    )
+    label = theme.label(parent, text, size=14, anchor="w")
 
     label.pack(
         fill="x",
@@ -19,178 +18,208 @@ def create_info_label(parent, text):
     return label
 
 
+# -----------------------------------------
+# DIALOG FOUNDATION
+# -----------------------------------------
+
+def create_modal(parent, title, width, height, accent=None):
+    """
+    Shared shell for every popup: themed, centred over the main
+    window, closes on Escape, and grabs input once it is visible
+    (grab_set right after creation can fail on some platforms).
+    Returns the CTkToplevel; callers add their own content.
+    """
+
+    window = ctk.CTkToplevel(parent)
+
+    window.title(title)
+    window.configure(fg_color=theme.SURFACE)
+    window.resizable(False, False)
+
+    try:
+        root = parent.winfo_toplevel()
+
+        x = root.winfo_rootx() + (root.winfo_width() - width) // 2
+        y = root.winfo_rooty() + (root.winfo_height() - height) // 2
+
+        window.geometry(f"{width}x{height}+{max(x, 0)}+{max(y, 0)}")
+        window.transient(root)
+
+    except TclError:
+        window.geometry(f"{width}x{height}")
+
+    def take_focus():
+        try:
+            window.lift()
+            window.focus_force()
+            window.grab_set()
+        except TclError:
+            pass  # window was closed before it became visible
+
+    window.after(120, take_focus)
+    window.bind("<Escape>", lambda event: window.destroy())
+
+    if accent:
+        ctk.CTkFrame(
+            window,
+            height=4,
+            corner_radius=0,
+            fg_color=accent
+        ).pack(fill="x")
+
+    return window
+
+
+def _message_dialog(parent, title, message, accent):
+
+    window = create_modal(parent, title, 420, 210, accent=accent)
+
+    theme.label(
+        window,
+        title,
+        size=16,
+        weight="bold"
+    ).pack(
+        pady=(22, 6)
+    )
+
+    theme.label(
+        window,
+        message,
+        size=13,
+        color=theme.TEXT_MUTED,
+        wraplength=360,
+        justify="center"
+    ).pack(
+        padx=20,
+        pady=(0, 18)
+    )
+
+    theme.primary_button(
+        window,
+        "OK",
+        window.destroy,
+        width=100
+    ).pack()
+
+    window.bind("<Return>", lambda event: window.destroy())
+
+
 def show_error(parent, message):
 
-    error_window = ctk.CTkToplevel(parent)
-
-    error_window.title("Error")
-    error_window.geometry("400x180")
-    error_window.resizable(False, False)
-
-    label = ctk.CTkLabel(
-        error_window,
-        text=message,
-        font=ctk.CTkFont(size=15),
-        wraplength=340
-    )
-
-    label.pack(pady=(35, 20))
-
-    button = ctk.CTkButton(
-        error_window,
-        text="OK",
-        width=100,
-        command=error_window.destroy
-    )
-
-    button.pack()
+    _message_dialog(parent, "Error", message, theme.DANGER)
 
 
 def show_info(parent, title, message):
+    """Informational popup -- same layout as show_error, custom title."""
+
+    _message_dialog(parent, title, message, theme.ACCENT)
+
+
+def show_confirm(parent, message, on_yes):
     """
-    Simple informational popup (new feature: Class Results page --
-    Export "Coming Soon"). Same layout as show_error, but with a
-    caller-provided title since this isn't necessarily an error.
+    Modal Yes/No confirmation (used for Delete Class / Delete
+    Student). Calls `on_yes()` only if the user picks Yes -- picking
+    No, pressing Escape or closing the dialog does nothing. Yes is
+    drawn in the danger colour because every use is destructive.
     """
 
-    info_window = ctk.CTkToplevel(parent)
+    window = create_modal(parent, "Confirm", 420, 210, accent=theme.DANGER)
 
-    info_window.title(title)
-    info_window.geometry("400x180")
-    info_window.resizable(False, False)
-
-    label = ctk.CTkLabel(
-        info_window,
-        text=message,
-        font=ctk.CTkFont(size=15),
-        wraplength=340
+    theme.label(
+        window,
+        "Are you sure?",
+        size=16,
+        weight="bold"
+    ).pack(
+        pady=(22, 6)
     )
 
-    label.pack(pady=(35, 20))
-
-    button = ctk.CTkButton(
-        info_window,
-        text="OK",
-        width=100,
-        command=info_window.destroy
-    )
-
-    button.pack()
-
-
-def show_confirm(parent, message, on_yes, on_no=None):
-    """
-    Modal Yes/No confirmation dialog (new feature: Delete Class /
-    Delete Student confirmations). Calls `on_yes()` only if the user
-    picks Yes.
-
-    `on_no` is optional (new feature: Unsaved Exit Warning). When it
-    is given, it is called if the user picks No -- needed when "No"
-    means "leave anyway" rather than "cancel". Without it, No does
-    nothing, exactly as before. Closing the dialog with the window's
-    X button never calls either callback.
-    """
-
-    confirm_window = ctk.CTkToplevel(parent)
-
-    confirm_window.title("Confirm")
-    confirm_window.geometry("400x180")
-    confirm_window.resizable(False, False)
-    confirm_window.grab_set()
-
-    label = ctk.CTkLabel(
-        confirm_window,
-        text=message,
-        font=ctk.CTkFont(size=15),
-        wraplength=340,
+    theme.label(
+        window,
+        message,
+        size=13,
+        color=theme.TEXT_MUTED,
+        wraplength=360,
         justify="center"
+    ).pack(
+        padx=20,
+        pady=(0, 18)
     )
-
-    label.pack(pady=(35, 20))
 
     def handle_yes():
-        confirm_window.destroy()
+        window.destroy()
         on_yes()
 
-    def handle_no():
-        confirm_window.destroy()
+    row = ctk.CTkFrame(window, fg_color="transparent")
 
-        if on_no:
-            on_no()
-
-    button_row = ctk.CTkFrame(
-        confirm_window,
-        fg_color="transparent"
-    )
-
-    button_row.pack()
+    row.pack()
 
     ctk.CTkButton(
-        button_row,
+        row,
         text="Yes",
         width=100,
-        fg_color="#1F8F4C",
-        hover_color="#27AE60",
+        height=36,
+        corner_radius=8,
+        font=theme.font(13, "bold"),
+        fg_color=theme.DANGER,
+        hover_color="#FCA5A5",
+        text_color="#2A0A0A",
         command=handle_yes
     ).pack(
         side="left",
-        padx=10
+        padx=8
     )
 
-    ctk.CTkButton(
-        button_row,
-        text="No",
+    theme.secondary_button(
+        row,
+        "No",
+        window.destroy,
         width=100,
-        fg_color="transparent",
-        hover_color="#3a1f1f",
-        border_color="#FF6B6B",
-        border_width=1,
-        command=handle_no
+        height=36
     ).pack(
         side="left",
-        padx=10
+        padx=8
     )
 
 
 def show_prompt(parent, title, label_text, on_submit):
     """
-    Small popup that asks for one line of text (new feature: Rule
-    Engine Presets -- naming a preset before saving it). Same
-    Toplevel/grab_set/button-row shape as show_confirm and
-    show_note_dialog. Calls `on_submit(text)` only if the professor
-    presses Save with a non-blank value; Cancel/closing the dialog
-    does nothing.
+    Small popup that asks for one line of text (naming a Rule Engine
+    preset). Calls `on_submit(text)` only if the professor presses
+    Save (or Enter) with a non-blank value; Cancel/closing does
+    nothing.
     """
 
-    prompt_window = ctk.CTkToplevel(parent)
+    window = create_modal(parent, title, 400, 240, accent=theme.ACCENT)
 
-    prompt_window.title(title)
-    prompt_window.geometry("380x200")
-    prompt_window.resizable(False, False)
-    prompt_window.grab_set()
+    theme.label(
+        window,
+        label_text,
+        size=14,
+        weight="bold",
+        wraplength=340
+    ).pack(
+        pady=(22, 10),
+        padx=24,
+        anchor="w"
+    )
 
-    ctk.CTkLabel(
-        prompt_window,
-        text=label_text,
-        font=ctk.CTkFont(size=14, weight="bold"),
-        wraplength=320
-    ).pack(pady=(25, 10), padx=20)
-
-    entry = ctk.CTkEntry(prompt_window)
+    entry = theme.text_entry(window)
 
     entry.pack(
         fill="x",
-        padx=20,
-        pady=(0, 10)
+        padx=24,
+        pady=(0, 6)
     )
 
-    error_label = ctk.CTkLabel(
-        prompt_window,
-        text="",
-        text_color="#FF6B6B"
-    )
+    error_label = theme.error_label(window)
 
-    error_label.pack(pady=(0, 5))
+    error_label.pack(
+        fill="x",
+        padx=24,
+        pady=(0, 8)
+    )
 
     def handle_save():
 
@@ -200,76 +229,85 @@ def show_prompt(parent, title, label_text, on_submit):
             error_label.configure(text="Please enter a name.")
             return
 
-        prompt_window.destroy()
+        window.destroy()
         on_submit(text)
 
-    button_row = ctk.CTkFrame(
-        prompt_window,
-        fg_color="transparent"
-    )
+    entry.bind("<Return>", lambda event: handle_save())
 
-    button_row.pack(pady=(5, 15))
+    row = ctk.CTkFrame(window, fg_color="transparent")
 
-    ctk.CTkButton(
-        button_row,
-        text="Save",
+    row.pack(pady=(4, 16))
+
+    theme.primary_button(
+        row,
+        "Save",
+        handle_save,
         width=100,
-        fg_color="#1F8F4C",
-        hover_color="#27AE60",
-        command=handle_save
+        height=36
     ).pack(
         side="left",
-        padx=10
+        padx=8
     )
 
-    ctk.CTkButton(
-        button_row,
-        text="Cancel",
+    theme.secondary_button(
+        row,
+        "Cancel",
+        window.destroy,
         width=100,
-        fg_color="transparent",
-        hover_color="#3a1f1f",
-        border_color="#FF6B6B",
-        border_width=1,
-        text_color="#FF6B6B",
-        command=prompt_window.destroy
+        height=36
     ).pack(
         side="left",
-        padx=10
+        padx=8
     )
+
+    window.after(200, entry.focus)
 
 
 def show_note_dialog(parent, initial_text, on_save):
     """
-    Small popup for adding/editing a single photo's note (new
-    feature: Photo Notes). Calls `on_save(text)` only if the
-    professor presses Save; Cancel/closing the dialog discards any
-    typed changes.
+    Popup for adding/editing a single photo's note. Calls
+    `on_save(text)` only if the professor presses Save; Cancel/
+    closing the dialog discards any typed changes.
     """
 
-    note_window = ctk.CTkToplevel(parent)
+    window = create_modal(parent, "Photo Note", 460, 330, accent=theme.ACCENT)
 
-    note_window.title("Photo Note")
-    note_window.geometry("420x280")
-    note_window.resizable(False, False)
-    note_window.grab_set()
+    theme.label(
+        window,
+        "Photo note",
+        size=16,
+        weight="bold"
+    ).pack(
+        anchor="w",
+        padx=24,
+        pady=(20, 2)
+    )
 
-    ctk.CTkLabel(
-        note_window,
-        text="Photo Note",
-        font=ctk.CTkFont(size=16, weight="bold"),
-        text_color="#7CFFB2"
-    ).pack(pady=(20, 10))
+    theme.muted(
+        window,
+        "Saved with this photo and included in the results export."
+    ).pack(
+        anchor="w",
+        padx=24,
+        pady=(0, 10)
+    )
 
     textbox = ctk.CTkTextbox(
-        note_window,
-        height=130
+        window,
+        height=130,
+        corner_radius=8,
+        font=theme.font(13),
+        fg_color=theme.SURFACE_ALT,
+        border_width=1,
+        border_color=theme.BORDER,
+        text_color=theme.TEXT
     )
 
     textbox.pack(
         fill="both",
         expand=True,
-        padx=20,
-        pady=(0, 15)
+        padx=24,
+        pady=(0, 14)
     )
 
     if initial_text:
@@ -277,39 +315,33 @@ def show_note_dialog(parent, initial_text, on_save):
 
     def handle_save():
         text = textbox.get("1.0", "end").strip()
-        note_window.destroy()
+        window.destroy()
         on_save(text)
 
-    button_row = ctk.CTkFrame(
-        note_window,
-        fg_color="transparent"
-    )
+    row = ctk.CTkFrame(window, fg_color="transparent")
 
-    button_row.pack(pady=(0, 15))
+    row.pack(pady=(0, 16))
 
-    ctk.CTkButton(
-        button_row,
-        text="Save",
+    theme.primary_button(
+        row,
+        "Save",
+        handle_save,
         width=100,
-        fg_color="#1F8F4C",
-        hover_color="#27AE60",
-        command=handle_save
+        height=36
     ).pack(
         side="left",
-        padx=10
+        padx=8
     )
 
-    ctk.CTkButton(
-        button_row,
-        text="Cancel",
+    theme.secondary_button(
+        row,
+        "Cancel",
+        window.destroy,
         width=100,
-        fg_color="transparent",
-        hover_color="#3a1f1f",
-        border_color="#FF6B6B",
-        border_width=1,
-        text_color="#FF6B6B",
-        command=note_window.destroy
+        height=36
     ).pack(
         side="left",
-        padx=10
+        padx=8
     )
+
+    window.after(200, textbox.focus)

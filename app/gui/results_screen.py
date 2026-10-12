@@ -4,27 +4,32 @@ from tkinter import filedialog
 import customtkinter as ctk
 
 from ..storage.export import default_export_filename, export_class_to_excel
+from . import theme
 from .widgets import show_error, show_info
+
+COL_NAME = 300
+COL_PHOTOS = 90
+COL_AVERAGE = 110
+COL_STATUS = 130
 
 
 class ClassResultsScreen:
     """
-    The Class Results page (new feature): replaces the old "Done"
-    screen shown at the end of the review flow. Purely a *view* over
-    the already-persisted core.class_model.ClassRecord -- the same
-    ClassStudentEntry / ClassPhotoEntry data that already powers the
-    Class Screen's Avg Total column and the Student DataFrame. No
-    score is computed, recalculated, or duplicated here:
+    The Class Results page: shown at the end of the review flow.
+    Purely a *view* over the already-persisted
+    core.class_model.ClassRecord -- the same ClassStudentEntry /
+    ClassPhotoEntry data that already powers the Class Screen's Avg
+    Total column and the Student DataFrame. No score is computed,
+    recalculated, or duplicated here:
 
         Photos -> Rule Engine -> Teacher Grading -> ClassRecord
                -> Student DataFrame -> Class Results (this screen)
 
     Takes a parent frame and a ClassRecord, and calls back into App
     for navigation (Home / Review / a student's details) -- this
-    screen never touches class storage itself (same rule as
-    ClassScreen / StudentDetailScreen). Export is the one action it
-    handles directly: it asks where to save, then hands the
-    ClassRecord to storage.export, which builds the workbook.
+    screen never touches class storage itself. Export is the one
+    action it handles directly: it asks where to save, then hands
+    the ClassRecord to storage.export, which builds the workbook.
     """
 
     def __init__(self, parent, class_record, on_home, on_review, on_student_details):
@@ -34,24 +39,13 @@ class ClassResultsScreen:
         self.on_review = on_review
         self.on_student_details = on_student_details
 
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        self.container.pack(
-            fill="both",
-            expand=True,
-            padx=40,
-            pady=30
-        )
+        self.container = theme.page(parent)
 
         self.create_header()
         self.create_completion_message()
-        self.create_class_average_card()
         self.create_summary()
-        self.create_student_table()
         self.create_bottom_bar()
+        self.create_student_table()
 
     # -----------------------------------------
     # HEADER
@@ -59,18 +53,25 @@ class ClassResultsScreen:
 
     def create_header(self):
 
-        ctk.CTkLabel(
+        theme.label(
             self.container,
-            text="Class Results",
-            font=ctk.CTkFont(size=22, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(pady=(0, 5))
+            "CLASS RESULTS",
+            size=12,
+            weight="bold",
+            color=theme.ACCENT,
+            anchor="w"
+        ).pack(anchor="w")
 
-        ctk.CTkLabel(
+        theme.label(
             self.container,
-            text=self.class_record.class_name,
-            font=ctk.CTkFont(size=26, weight="bold")
-        ).pack(pady=(0, 15))
+            self.class_record.class_name,
+            size=26,
+            weight="bold",
+            anchor="w"
+        ).pack(
+            anchor="w",
+            pady=(0, 12)
+        )
 
     # -----------------------------------------
     # COMPLETION MESSAGE
@@ -78,10 +79,10 @@ class ClassResultsScreen:
 
     def create_completion_message(self):
         """
-        Short status line under the class name. The "grading
-        completed" wording is only shown when it's actually true
-        (every student Completed) -- this page is also reached after
-        grading a single student, when others may still be Pending.
+        Short status banner. The "grading completed" wording is only
+        shown when it's actually true (every student Completed) --
+        this page is also reached after grading a single student,
+        when others may still be Pending.
         """
 
         if not self.class_record.students:
@@ -94,94 +95,129 @@ class ClassResultsScreen:
                 "Grading completed successfully. "
                 "All student results are ready to review."
             )
-            color = "#7CFFB2"
+            color = theme.SUCCESS
         else:
             noun = "student" if pending == 1 else "students"
             text = f"Grading in progress. {pending} {noun} still pending."
-            color = "gray60"
+            color = theme.WARNING
 
-        ctk.CTkLabel(
+        banner = ctk.CTkFrame(
             self.container,
-            text=text,
-            text_color=color,
-            font=ctk.CTkFont(size=13)
-        ).pack(pady=(0, 15))
+            fg_color=theme.TINTS[color],
+            corner_radius=10
+        )
+
+        banner.pack(
+            fill="x",
+            pady=(0, 16)
+        )
+
+        theme.label(
+            banner,
+            text,
+            size=13,
+            color=color,
+            anchor="w"
+        ).pack(
+            anchor="w",
+            padx=16,
+            pady=10
+        )
 
     # -----------------------------------------
-    # CLASS AVERAGE
+    # SUMMARY (Class Average + counts)
     # -----------------------------------------
 
-    def create_class_average_card(self):
+    def create_summary(self):
         """
         Reads ClassRecord.average_total_score -- the mean of every
         graded *photo's* Total Score in the class, not the mean of
-        the student averages -- so it's shown exactly as computed.
+        the student averages -- shown exactly as computed.
         """
 
-        average = self.class_record.average_total_score
-        graded = self.class_record.graded_photo_count
-        total = self.class_record.total_photo_count
+        record = self.class_record
+
+        average = record.average_total_score
+        graded = record.graded_photo_count
+        total = record.total_photo_count
 
         average_text = "—" if math.isnan(average) else f"{average:g} / 100"
 
         # True when the average is built from only part of the class.
         is_partial = 0 < graded < total
 
-        card = ctk.CTkFrame(
-            self.container,
+        row = ctk.CTkFrame(self.container, fg_color="transparent")
+
+        row.pack(
+            fill="x",
+            pady=(0, 18)
+        )
+
+        for column in range(5):
+            row.grid_columnconfigure(column, weight=1 if column == 0 else 0)
+
+        average_card = ctk.CTkFrame(
+            row,
+            fg_color=theme.SURFACE,
+            border_width=1,
+            border_color=theme.BORDER,
             corner_radius=12
         )
 
-        card.pack(pady=(0, 15))
-
-        ctk.CTkLabel(
-            card,
-            text="Class Average",
-            text_color="gray60",
-            font=ctk.CTkFont(size=14)
-        ).pack(
-            padx=60,
-            pady=(12, 0)
+        average_card.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(0, 10)
         )
 
-        ctk.CTkLabel(
-            card,
-            text=average_text,
-            text_color="#7CFFB2",
-            font=ctk.CTkFont(size=28, weight="bold")
+        theme.muted(
+            average_card,
+            "Class Average",
+            size=13
         ).pack(
-            padx=60,
-            pady=(0, 2 if is_partial else 12)
+            anchor="w",
+            padx=22,
+            pady=(14, 0)
+        )
+
+        theme.label(
+            average_card,
+            average_text,
+            size=32,
+            weight="bold",
+            color=theme.ACCENT,
+            anchor="w"
+        ).pack(
+            anchor="w",
+            padx=22,
+            pady=(0, 2 if is_partial else 14)
         )
 
         if is_partial:
+            theme.muted(
+                average_card,
+                f"Based on {graded} of {total} photos graded"
+            ).pack(
+                anchor="w",
+                padx=22,
+                pady=(0, 14)
+            )
 
-            ctk.CTkLabel(
-                card,
-                text=f"Based on {graded} of {total} photos graded",
-                text_color="gray60",
-                font=ctk.CTkFont(size=12)
-            ).pack(pady=(0, 12))
+        tiles = [
+            ("Students", str(record.student_count)),
+            ("Photos", str(record.total_photo_count)),
+            ("Completed", str(record.completed_student_count)),
+            ("Pending", str(record.pending_student_count)),
+        ]
 
-    # -----------------------------------------
-    # CLASS SUMMARY
-    # -----------------------------------------
-
-    def create_summary(self):
-
-        summary_text = (
-            f"{self.class_record.student_count} Students • "
-            f"{self.class_record.total_photo_count} Photos • "
-            f"{self.class_record.completed_student_count} Completed • "
-            f"{self.class_record.pending_student_count} Pending"
-        )
-
-        ctk.CTkLabel(
-            self.container,
-            text=summary_text,
-            text_color="gray60",
-            font=ctk.CTkFont(size=14)
-        ).pack(pady=(0, 20))
+        for column, (caption, value) in enumerate(tiles, start=1):
+            theme.stat_tile(row, caption, value).grid(
+                row=0,
+                column=column,
+                sticky="nsew",
+                padx=(0 if column == 1 else 8, 0)
+            )
 
     # -----------------------------------------
     # STUDENT RESULTS TABLE
@@ -189,26 +225,54 @@ class ClassResultsScreen:
 
     def create_student_table(self):
 
-        card = ctk.CTkFrame(
-            self.container,
-            corner_radius=12
-        )
+        card = theme.card(self.container)
 
         card.pack(
             fill="both",
             expand=True,
-            pady=(0, 20)
+            pady=(0, 16)
         )
 
         if not self.class_record.students:
 
-            ctk.CTkLabel(
+            theme.label(
                 card,
-                text="No students in this class.",
-                text_color="gray60"
+                "No students in this class.",
+                size=14,
+                color=theme.TEXT_MUTED
             ).pack(expand=True)
 
             return
+
+        header_row = ctk.CTkFrame(card, fg_color="transparent")
+
+        header_row.pack(
+            fill="x",
+            padx=28,
+            pady=(14, 2)
+        )
+
+        headers = [
+            ("STUDENT", COL_NAME),
+            ("PHOTOS", COL_PHOTOS),
+            ("AVERAGE", COL_AVERAGE),
+            ("STATUS", COL_STATUS),
+        ]
+
+        for col_index, (text, width) in enumerate(headers):
+            theme.label(
+                header_row,
+                text,
+                size=11,
+                weight="bold",
+                color=theme.TEXT_FAINT,
+                width=width,
+                anchor="w"
+            ).grid(
+                row=0,
+                column=col_index,
+                padx=6
+            )
 
         table_frame = ctk.CTkScrollableFrame(
             card,
@@ -218,26 +282,9 @@ class ClassResultsScreen:
         table_frame.pack(
             fill="both",
             expand=True,
-            padx=20,
-            pady=20
+            padx=14,
+            pady=(0, 12)
         )
-
-        headers = ["Student", "Photos", "Average", "Status"]
-
-        for col_index, header_text in enumerate(headers):
-
-            ctk.CTkLabel(
-                table_frame,
-                text=header_text,
-                font=ctk.CTkFont(size=14, weight="bold"),
-                text_color="#7CFFB2"
-            ).grid(
-                row=0,
-                column=col_index,
-                padx=15,
-                pady=(0, 10),
-                sticky="w"
-            )
 
         for row_index, student in enumerate(self.class_record.students, start=1):
             self.create_student_row(table_frame, row_index, student)
@@ -251,11 +298,11 @@ class ClassResultsScreen:
         A Pending student always shows "—" for Average, even if a
         partial average could technically be computed.
 
-        The name cell also holds the small "ⓘ" details button, which
-        opens that student's per-photo details via
-        on_student_details(class_record, student_index). Rows start
-        at grid row 1 (row 0 is the header), so the student's index
-        in class_record.students is row_index - 1.
+        The name cell also holds the "Details" button, which opens
+        that student's per-photo details via
+        on_student_details(class_record, student_index). Rows are
+        numbered from 1, so the student's index in
+        class_record.students is row_index - 1.
         """
 
         completed = student.is_completed
@@ -266,72 +313,113 @@ class ClassResultsScreen:
         else:
             average_text = "—"
 
-        name_cell = ctk.CTkFrame(
+        row = ctk.CTkFrame(
             table_frame,
-            fg_color="transparent"
+            fg_color=theme.SURFACE_ALT if row_index % 2 else "transparent",
+            corner_radius=8
+        )
+
+        row.pack(
+            fill="x",
+            pady=2,
+            padx=(0, 4)
+        )
+
+        name_cell = ctk.CTkFrame(
+            row,
+            fg_color="transparent",
+            width=COL_NAME,
+            height=40
         )
 
         name_cell.grid(
-            row=row_index,
+            row=0,
             column=0,
-            padx=15,
+            padx=6,
             pady=4,
             sticky="w"
         )
 
-        ctk.CTkLabel(
+        name_cell.grid_propagate(False)
+        name_cell.grid_columnconfigure(0, weight=1)
+
+        theme.label(
             name_cell,
-            text=student.name,
-            anchor="w"
-        ).pack(side="left")
-
-        ctk.CTkButton(
-            name_cell,
-            text="ⓘ",
-            width=28,
-            height=24,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            text_color="#7CFFB2",
-            command=lambda i=row_index - 1: self.on_student_details(
-                self.class_record, i
-            )
-        ).pack(
-            side="left",
-            padx=(8, 0)
-        )
-
-        row_values = [str(student.photo_count), average_text]
-
-        for col_index, value in enumerate(row_values, start=1):
-
-            ctk.CTkLabel(
-                table_frame,
-                text=value,
-                anchor="w"
-            ).grid(
-                row=row_index,
-                column=col_index,
-                padx=15,
-                pady=4,
-                sticky="w"
-            )
-
-        status_text = "Completed" if completed else "Pending"
-        status_color = "#7CFFB2" if completed else "#F5D76E"
-
-        ctk.CTkLabel(
-            table_frame,
-            text=status_text,
-            text_color=status_color,
-            font=ctk.CTkFont(weight="bold"),
+            student.name,
+            size=13,
+            weight="bold",
             anchor="w"
         ).grid(
-            row=row_index,
+            row=0,
+            column=0,
+            sticky="w",
+            pady=6
+        )
+
+        theme.ghost_button(
+            name_cell,
+            "Details",
+            lambda i=row_index - 1: self.on_student_details(
+                self.class_record, i
+            ),
+            width=64,
+            height=26
+        ).grid(
+            row=0,
+            column=1,
+            sticky="e"
+        )
+
+        theme.muted(
+            row,
+            str(student.photo_count),
+            size=13,
+            width=COL_PHOTOS,
+            anchor="w"
+        ).grid(
+            row=0,
+            column=1,
+            padx=6
+        )
+
+        theme.label(
+            row,
+            average_text,
+            size=13,
+            weight="bold",
+            color=theme.TEXT if completed else theme.TEXT_FAINT,
+            width=COL_AVERAGE,
+            anchor="w"
+        ).grid(
+            row=0,
+            column=2,
+            padx=6
+        )
+
+        status_cell = ctk.CTkFrame(
+            row,
+            fg_color="transparent",
+            width=COL_STATUS,
+            height=30
+        )
+
+        status_cell.grid(
+            row=0,
             column=3,
-            padx=15,
-            pady=4,
+            padx=6,
             sticky="w"
+        )
+
+        status_cell.grid_propagate(False)
+
+        theme.pill(
+            status_cell,
+            "Completed" if completed else "Pending",
+            theme.SUCCESS if completed else theme.WARNING
+        ).place(
+            x=0,
+            rely=0.5,
+            anchor="w"
         )
 
     # -----------------------------------------
@@ -345,45 +433,37 @@ class ClassResultsScreen:
             fg_color="transparent"
         )
 
-        bottom_frame.pack(fill="x")
+        # Packed before the table so it always stays visible.
+        bottom_frame.pack(
+            side="bottom",
+            fill="x"
+        )
 
-        ctk.CTkButton(
+        theme.secondary_button(
             bottom_frame,
-            text="Home",
-            width=140,
-            height=40,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            text_color="#7CFFB2",
-            border_width=1,
-            command=self.on_home
+            "Home",
+            self.on_home,
+            width=120,
+            height=40
         ).pack(side="left")
 
-        ctk.CTkButton(
+        theme.secondary_button(
             bottom_frame,
-            text="Review",
-            width=140,
-            height=40,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.on_review
+            "Review",
+            self.on_review,
+            width=120,
+            height=40
         ).pack(
             side="left",
             padx=(10, 0)
         )
 
-        ctk.CTkButton(
+        theme.primary_button(
             bottom_frame,
-            text="Export",
-            width=140,
-            height=40,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            text_color="#7CFFB2",
-            border_width=1,
-            command=self.handle_export
+            "Export to Excel",
+            self.handle_export,
+            width=160,
+            height=40
         ).pack(side="right")
 
     def handle_export(self):

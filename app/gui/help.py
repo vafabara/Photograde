@@ -1,20 +1,23 @@
 import customtkinter as ctk
 
+from . import theme
+
 
 # -----------------------------------------------------------------
 # HELP CONTENT
 #
-# The text below is the provided Help content, unchanged -- it is only
+# Sections 1-14 are the provided Help content, unchanged. Section 15
+# was added to describe Save & Continue, search and Settings. It is
 # split into blocks so the screen can lay it out with headings, body
-# text, bullet lists and highlighted lines instead of one big
-# text block. Each section is (heading, [blocks]); a block is:
+# text, bullet lists and highlighted lines. Each section is
+# (heading, [blocks]); a block is:
 #
 #   ("p", text)       a body paragraph
 #   ("list", items)   a bullet list (one string per bullet)
 #   ("lines", lines)  short highlighted lines (workflow, example values)
 # -----------------------------------------------------------------
 
-PAGE_TITLE = "HOW TO USE PHOTOGRADE"
+PAGE_TITLE = "How to use PhotoGrade"
 
 SECTIONS = [
     (
@@ -168,19 +171,32 @@ SECTIONS = [
             ("p", "PhotoGrade is designed to make the technical and organizational parts of photography grading easier, while keeping the final evaluation in the teacher's hands."),
         ],
     ),
+    (
+        "15. SAVE & CONTINUE, SEARCH AND SETTINGS",
+        [
+            ("p", "While grading, the bar above the photo shows how many photos in the current queue already have a confirmed Total Score. Press Save to keep your place."),
+            ("p", "The next time you open PhotoGrade, the Home Screen shows Continue (Class Name) Grading so you can resume where you stopped."),
+            ("list", [
+                "Only one saved grading session can exist at a time. Finish it before saving progress for a different class or a different student.",
+                "The saved progress is removed automatically once every photo in the queue has a confirmed score.",
+                "If you exit with unsaved progress, PhotoGrade asks you to confirm first.",
+            ]),
+            ("p", "Use the search field above the class list (Home Screen) or the student list (Class Screen) to filter by name. Clear the field to see everything again."),
+            ("p", "Settings (Home Screen) lets you choose the default System/Teacher weights for new classes, whether deleting asks for confirmation, and whether EXIF information is shown while grading."),
+        ],
+    ),
 ]
 
 # Wide enough to use the space, narrow enough to fit inside the
-# window at its minimum size (900 px) once padding and the
-# scrollbar are accounted for.
-TEXT_WRAP = 700
+# window at its minimum size once padding and the scrollbar are
+# accounted for.
+TEXT_WRAP = 720
 
 
 class HelpScreen:
     """
-    The "How to Use" Help screen. Follows the same pattern as
-    StudentDetailScreen: takes a parent frame, builds its own widgets
-    into it, and calls `on_back()` when the user presses Back.
+    The "How to Use" Help screen: takes a parent frame, builds its own
+    widgets into it, and calls `on_back()` when the user presses Back.
 
     Purely static content -- it never touches grading, storage or
     class data. The header (Back button + title) stays fixed and only
@@ -189,59 +205,16 @@ class HelpScreen:
 
     def __init__(self, parent, on_back):
 
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
+        self.container = theme.page(parent)
 
-        self.container.pack(
-            fill="both",
-            expand=True,
-            padx=40,
-            pady=30
-        )
-
-        self.create_header(on_back)
-        self.create_sections()
-
-    # -----------------------------------------
-    # HEADER
-    # -----------------------------------------
-
-    def create_header(self, on_back):
-
-        header = ctk.CTkFrame(
+        theme.screen_header(
             self.container,
-            fg_color="transparent"
+            PAGE_TITLE,
+            subtitle="A short guide to the PhotoGrade workflow and its main features.",
+            on_back=on_back
         )
 
-        header.pack(
-            fill="x",
-            pady=(0, 20)
-        )
-
-        ctk.CTkButton(
-            header,
-            text="← Back",
-            width=90,
-            height=32,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            text_color="#7CFFB2",
-            border_width=1,
-            command=on_back
-        ).pack(
-            side="left",
-            padx=(0, 15)
-        )
-
-        ctk.CTkLabel(
-            header,
-            text=PAGE_TITLE,
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(side="left")
+        self.create_sections()
 
     # -----------------------------------------
     # SECTIONS
@@ -264,26 +237,24 @@ class HelpScreen:
 
     def create_section(self, parent, heading, blocks):
 
-        card = ctk.CTkFrame(
-            parent,
-            corner_radius=12
-        )
+        card = theme.card(parent)
 
         card.pack(
             fill="x",
-            padx=(0, 10),
-            pady=(0, 15)
+            padx=(0, 8),
+            pady=(0, 14)
         )
 
-        ctk.CTkLabel(
+        theme.label(
             card,
-            text=heading,
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color="#7CFFB2",
+            heading,
+            size=16,
+            weight="bold",
+            color=theme.ACCENT,
             anchor="w"
         ).pack(
             fill="x",
-            padx=20,
+            padx=22,
             pady=(18, 8)
         )
 
@@ -305,16 +276,16 @@ class HelpScreen:
 
     def create_paragraph(self, card, text):
 
-        ctk.CTkLabel(
+        theme.label(
             card,
-            text=text,
-            font=ctk.CTkFont(size=14),
+            text,
+            size=14,
             wraplength=TEXT_WRAP,
             justify="left",
             anchor="w"
         ).pack(
             fill="x",
-            padx=20,
+            padx=22,
             pady=(0, 8)
         )
 
@@ -322,16 +293,17 @@ class HelpScreen:
 
         for item in items:
 
-            ctk.CTkLabel(
+            theme.label(
                 card,
-                text=f"•  {item}",
-                font=ctk.CTkFont(size=14),
+                f"•  {item}",
+                size=14,
+                color=theme.TEXT,
                 wraplength=TEXT_WRAP - 25,
                 justify="left",
                 anchor="w"
             ).pack(
                 fill="x",
-                padx=(40, 20),
+                padx=(42, 22),
                 pady=(0, 3)
             )
 
@@ -346,28 +318,29 @@ class HelpScreen:
         """
         Short lines that should stand out from body text (the
         workflow chain, example rule values) in a tinted box using
-        the app's green accent.
+        the app's amber accent.
         """
 
         box = ctk.CTkFrame(
             card,
             corner_radius=8,
-            fg_color="#123f2c"
+            fg_color=theme.TINTS[theme.ACCENT]
         )
 
         box.pack(
             fill="x",
-            padx=20,
+            padx=22,
             pady=(0, 10)
         )
 
         for line in lines:
 
-            ctk.CTkLabel(
+            theme.label(
                 box,
-                text=line,
-                font=ctk.CTkFont(size=14, weight="bold"),
-                text_color="#7CFFB2",
+                line,
+                size=14,
+                weight="bold",
+                color=theme.ACCENT,
                 wraplength=TEXT_WRAP - 30,
                 justify="left",
                 anchor="w"

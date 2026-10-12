@@ -4,27 +4,24 @@ from pathlib import Path
 
 from ..core.image import scan_student_folder, validate_selected_files, FolderValidationError
 from ..core.student import Student, ImageRecord
+from . import theme
 
 
 class StudentFoldersScreen:
     """
-    Setup step 3 (replaces the old one-photo-per-student screen --
-    new feature: Select Image -> Select Folder, now also Select
-    Files). Follows the same pattern as RuleEngineScreen/HomeScreen:
-    takes a parent frame and an on_continue callback.
+    Setup step 3. Takes a parent frame and an on_continue callback,
+    the same pattern as RuleEngineScreen/HomeScreen.
 
     For each student, the professor picks a folder OR one/more
-    individual image files (new feature: single image selection, so
-    a one-photo student doesn't need a folder just for that photo).
-    Every valid image is discovered and validated against the same
-    limits (max images / max total size) before the professor can
-    continue -- a bad selection shows its error right on that
-    student's row instead of crashing or silently dropping images.
+    individual image files. Every valid image is discovered and
+    validated against the same limits (max images / max total size)
+    before the professor can continue -- a bad selection shows its
+    error right on that student's row instead of crashing or silently
+    dropping images.
 
     Calls `on_continue(students)` with a list of fully-populated
     core.student.Student objects -- each with its `images` list
-    already built as one ImageRecord per discovered photo -- ready
-    for the Rule Engine / Teacher Grading review flow.
+    already built as one ImageRecord per discovered photo.
     """
 
     def __init__(self, parent, students, on_continue):
@@ -38,24 +35,39 @@ class StudentFoldersScreen:
             for entry in students
         ]
 
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
+        self.container = theme.page(parent)
 
-        self.container.pack(
-            fill="both",
-            expand=True,
-            padx=40,
-            pady=30
-        )
+        theme.setup_steps(self.container, current=3)
 
-        ctk.CTkLabel(
+        theme.screen_header(
             self.container,
-            text="Select Photos for Each Student",
-            font=ctk.CTkFont(size=22, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(pady=(0, 15))
+            "Select photos for each student",
+            subtitle="Pick a folder, or choose one or more image files, for every student."
+        )
+
+        # Footer first so the Start button never gets pushed off screen.
+        footer = ctk.CTkFrame(self.container, fg_color="transparent")
+
+        footer.pack(
+            side="bottom",
+            fill="x",
+            pady=(12, 0)
+        )
+
+        self.error_label = theme.error_label(footer)
+
+        self.error_label.pack(
+            anchor="w",
+            pady=(0, 6)
+        )
+
+        theme.primary_button(
+            footer,
+            "Start Review  →",
+            self.handle_continue,
+            width=180,
+            height=42
+        ).pack(anchor="w")
 
         self.scroll_frame = ctk.CTkScrollableFrame(
             self.container,
@@ -69,25 +81,7 @@ class StudentFoldersScreen:
 
         self.status_labels = []
 
-        self.error_label = ctk.CTkLabel(
-            self.container,
-            text="",
-            text_color="#FF6B6B"
-        )
-
         self.create_student_rows()
-
-        self.error_label.pack(pady=(10, 5))
-
-        ctk.CTkButton(
-            self.container,
-            text="Start Review",
-            width=180,
-            height=40,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.handle_continue
-        ).pack(pady=(10, 0))
 
     # -----------------------------------------
     # ROWS
@@ -97,57 +91,71 @@ class StudentFoldersScreen:
 
         for index, student in enumerate(self.class_students):
 
-            row = ctk.CTkFrame(
-                self.scroll_frame,
-                fg_color="transparent"
-            )
+            row = theme.card(self.scroll_frame)
 
             row.pack(
                 fill="x",
-                pady=8
+                pady=5,
+                padx=(0, 6)
             )
 
-            ctk.CTkLabel(
+            row.grid_columnconfigure(3, weight=1)
+
+            theme.label(
                 row,
-                text=f"Student: {student.name}",
-                width=220,
+                student.name,
+                size=14,
+                weight="bold",
+                width=190,
+                anchor="w"
+            ).grid(
+                row=0,
+                column=0,
+                padx=(18, 10),
+                pady=14,
+                sticky="w"
+            )
+
+            theme.secondary_button(
+                row,
+                "Select Folder",
+                lambda i=index: self.select_folder(i),
+                width=120,
+                height=34
+            ).grid(
+                row=0,
+                column=1,
+                padx=(0, 8)
+            )
+
+            theme.secondary_button(
+                row,
+                "Select Files",
+                lambda i=index: self.select_files(i),
+                width=120,
+                height=34
+            ).grid(
+                row=0,
+                column=2,
+                padx=(0, 14)
+            )
+
+            status_label = theme.label(
+                row,
+                "No photos selected",
+                size=13,
+                color=theme.TEXT_FAINT,
                 anchor="w",
-                font=ctk.CTkFont(
-                    size=14,
-                    weight="bold"
-                )
-            ).pack(
-                side="left",
-                padx=(0, 10)
+                justify="left",
+                wraplength=360
             )
 
-            ctk.CTkButton(
-                row,
-                text="Select Folder",
-                width=120,
-                command=lambda i=index: self.select_folder(i)
-            ).pack(
-                side="left",
-                padx=(0, 10)
+            status_label.grid(
+                row=0,
+                column=3,
+                sticky="w",
+                padx=(0, 16)
             )
-
-            ctk.CTkButton(
-                row,
-                text="Select Files",
-                width=120,
-                command=lambda i=index: self.select_files(i)
-            ).pack(
-                side="left",
-                padx=(0, 10)
-            )
-
-            status_label = ctk.CTkLabel(
-                row,
-                text="No photos selected",
-                text_color="gray60"
-            )
-
-            status_label.pack(side="left")
 
             self.status_labels.append(status_label)
 
@@ -176,8 +184,8 @@ class StudentFoldersScreen:
             student.images = []
 
             status_label.configure(
-                text=f"⚠️ {error}",
-                text_color="#FF6B6B"
+                text=f"⚠ {error}",
+                text_color=theme.DANGER
             )
 
             return
@@ -193,12 +201,12 @@ class StudentFoldersScreen:
         ]
 
         status_label.configure(
-            text=f"✅ {len(image_paths)} image(s) found",
-            text_color="#7CFFB2"
+            text=f"✓ {len(image_paths)} image(s) found",
+            text_color=theme.SUCCESS
         )
 
     # -----------------------------------------
-    # FILE SELECTION (new feature: single/multiple image selection)
+    # FILE SELECTION
     # -----------------------------------------
 
     def select_files(self, index):
@@ -222,8 +230,8 @@ class StudentFoldersScreen:
             student.images = []
 
             status_label.configure(
-                text=f"⚠️ {error}",
-                text_color="#FF6B6B"
+                text=f"⚠ {error}",
+                text_color=theme.DANGER
             )
 
             return
@@ -240,8 +248,8 @@ class StudentFoldersScreen:
         ]
 
         status_label.configure(
-            text=f"✅ {len(image_paths)} image(s) selected",
-            text_color="#7CFFB2"
+            text=f"✓ {len(image_paths)} image(s) selected",
+            text_color=theme.SUCCESS
         )
 
     # -----------------------------------------

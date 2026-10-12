@@ -5,28 +5,24 @@ from ..core.teacher_scoring import (
     compute_total_score,
     TeacherScoreError,
 )
+from . import theme
 
 
 class TeacherGradingPanel:
     """
     Renders the Rule Engine / Teacher Grading / Total Score
-    breakdown for whichever photo is currently on screen (new
-    feature: Teacher Grading). Lives inside MetadataPanel's score
-    section, the same way HistogramPanel lives inside ImageViewer.
+    breakdown for whichever photo is currently on screen. Lives
+    inside MetadataPanel's score section, the same way HistogramPanel
+    lives inside ImageViewer.
 
-    The System/Human split always comes from whatever is already
-    set on the ImageRecord passed to update() (rule_engine_max_score
-    / teacher_max_score, which app.py fills in from the existing
+    The System/Human split always comes from whatever is already set
+    on the ImageRecord passed to update() (rule_engine_max_score /
+    teacher_max_score, which app.py fills in from the existing
     RuleEngineConfig) -- nothing here is hard-coded to a specific
-    weighting, so 40/60 and 30/70 both just work. The one exception
-    is a photo whose Rule Engine grading came back with
-    grading_result.exif_missing True -- app.py has already set that
-    photo's teacher_max_score to 100 instead of the configured
-    split, and this panel shows "EXIF Missing" in place of a Rule
-    Engine score.
+    weighting, so 40/60 and 30/70 both just work.
 
     Calls `on_confirm(image_record)` once the professor enters a
-    valid score and presses Confirm.
+    valid score and presses Confirm (or Enter).
     """
 
     def __init__(self, parent, on_confirm=None):
@@ -41,56 +37,74 @@ class TeacherGradingPanel:
 
         self.frame.pack(
             fill="x",
-            padx=20,
+            padx=16,
+            pady=(0, 14)
+        )
+
+        # Rule Engine (automatic) score
+        engine_row = ctk.CTkFrame(self.frame, fg_color="transparent")
+
+        engine_row.pack(
+            fill="x",
             pady=(0, 10)
         )
 
-        self.rule_engine_label = ctk.CTkLabel(
-            self.frame,
-            text="Rule Engine: —",
-            anchor="w",
-            font=ctk.CTkFont(size=14)
+        theme.muted(
+            engine_row,
+            "Rule Engine",
+            size=13
+        ).pack(side="left")
+
+        self.rule_engine_label = theme.label(
+            engine_row,
+            "—",
+            size=13,
+            weight="bold",
+            anchor="e"
         )
 
-        self.rule_engine_label.pack(
-            anchor="w",
-            pady=(0, 8)
-        )
+        self.rule_engine_label.pack(side="right")
 
         self.create_teacher_row()
 
-        self.error_label = ctk.CTkLabel(
+        self.error_label = theme.error_label(
             self.frame,
-            text="",
-            text_color="#FF6B6B",
-            anchor="w"
+            wraplength=300,
+            justify="left"
         )
 
         self.error_label.pack(
             anchor="w",
-            pady=(4, 8)
+            pady=(4, 6)
         )
 
-        self.total_separator = ctk.CTkFrame(
-            self.frame,
-            height=1,
-            fg_color="gray30"
-        )
+        self.total_separator = theme.divider(self.frame)
 
         self.total_separator.pack(
             fill="x",
-            pady=(0, 8)
+            pady=(0, 10)
         )
 
-        self.total_label = ctk.CTkLabel(
-            self.frame,
-            text="Total Score: —",
-            font=ctk.CTkFont(size=15, weight="bold"),
-            text_color="#7CFFB2",
-            anchor="w"
+        total_row = ctk.CTkFrame(self.frame, fg_color="transparent")
+
+        total_row.pack(fill="x")
+
+        theme.muted(
+            total_row,
+            "Total Score",
+            size=13
+        ).pack(side="left")
+
+        self.total_label = theme.label(
+            total_row,
+            "— / 100",
+            size=20,
+            weight="bold",
+            color=theme.ACCENT,
+            anchor="e"
         )
 
-        self.total_label.pack(anchor="w")
+        self.total_label.pack(side="right")
 
     def create_teacher_row(self):
 
@@ -104,43 +118,44 @@ class TeacherGradingPanel:
             pady=(0, 4)
         )
 
-        ctk.CTkLabel(
+        theme.muted(
             row,
-            text="Teacher Grading:",
-            anchor="w"
+            "Teacher grading",
+            size=13
         ).pack(side="left")
 
-        self.teacher_entry = ctk.CTkEntry(
+        self.confirm_button = theme.primary_button(
             row,
-            width=70,
-            placeholder_text="?"
+            "Confirm",
+            self.handle_confirm,
+            width=84,
+            height=32
         )
 
-        self.teacher_entry.pack(
-            side="left",
-            padx=(8, 6)
-        )
+        self.confirm_button.pack(side="right")
 
-        self.teacher_max_label = ctk.CTkLabel(
+        self.teacher_max_label = theme.muted(
             row,
-            text="/ —"
+            "/ —",
+            size=13
         )
 
-        self.teacher_max_label.pack(side="left")
+        self.teacher_max_label.pack(
+            side="right",
+            padx=(6, 10)
+        )
 
-        self.confirm_button = ctk.CTkButton(
+        self.teacher_entry = theme.text_entry(
             row,
-            text="Confirm",
-            width=80,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.handle_confirm
+            width=64,
+            height=32,
+            placeholder_text="?",
+            justify="center"
         )
 
-        self.confirm_button.pack(
-            side="left",
-            padx=(12, 0)
-        )
+        self.teacher_entry.pack(side="right")
+
+        self.teacher_entry.bind("<Return>", lambda event: self.handle_confirm())
 
     # -----------------------------------------
     # RENDER
@@ -148,33 +163,27 @@ class TeacherGradingPanel:
 
     def update(self, image_record):
         """
-        `image_record` — a core.student.ImageRecord for the photo
+        `image_record` -- a core.student.ImageRecord for the photo
         currently on screen. Resets the input box for a fresh photo,
         or re-shows an already-confirmed Teacher score if this exact
-        photo was graded before (e.g. the professor navigates back
-        to it later, once that becomes possible).
+        photo was graded before.
         """
 
         self.image_record = image_record
         self.error_label.configure(text="")
 
-        grading = image_record.grading_result
-        exif_missing = grading is not None and grading.exif_missing
-
-        if exif_missing:
+        if image_record.rule_engine_score is None:
             self.rule_engine_label.configure(
-                text="Rule Engine: EXIF Missing"
-            )
-        elif image_record.rule_engine_score is None:
-            self.rule_engine_label.configure(
-                text="Rule Engine: — (no rules configured)"
+                text="— (no rules configured)",
+                text_color=theme.TEXT_MUTED
             )
         else:
             self.rule_engine_label.configure(
                 text=(
-                    f"Rule Engine: {image_record.rule_engine_score:g} "
+                    f"{image_record.rule_engine_score:g} "
                     f"/ {image_record.rule_engine_max_score:g}"
-                )
+                ),
+                text_color=theme.TEXT
             )
 
         teacher_max = image_record.teacher_max_score
@@ -195,13 +204,13 @@ class TeacherGradingPanel:
         record = self.image_record
 
         if record is None or record.total_score is None:
-            self.total_label.configure(text="Total Score: ? / 100")
+            self.total_label.configure(text="— / 100")
             return
 
         total_max = (record.rule_engine_max_score or 0) + (record.teacher_max_score or 0)
 
         self.total_label.configure(
-            text=f"Total Score: {record.total_score:g} / {total_max:g}"
+            text=f"{record.total_score:g} / {total_max:g}"
         )
 
     # -----------------------------------------

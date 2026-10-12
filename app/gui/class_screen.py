@@ -4,36 +4,30 @@ import customtkinter as ctk
 from tkinter import filedialog
 
 from ..core.image import scan_student_folder, validate_selected_files, FolderValidationError
-from .widgets import show_error, show_confirm
+from . import theme
+from .widgets import create_modal, show_error, show_confirm
+
+# Fixed pixel widths for the table columns, shared by the header row
+# and every student row so they line up.
+COL_AVG = 90
+COL_PHOTOS = 70
+COL_GRADED = 140
+COL_ACTIONS = 340
 
 
 class ClassScreen:
     """
-    The Class Screen (spec sections 8, 9, 11, 12, 14, 15): shows one
-    persisted class's students with their photo counts and average
-    Total Score, and lets the professor add photos (folder or
+    The Class Screen: shows one persisted class's students with
+    their photo counts, grading progress and average Total Score, and
+    lets the professor start grading, add photos (folder or
     individual files), add a new student, or delete a student.
 
-    Takes a parent frame and a core.class_model.ClassRecord, and
-    renders straight from it -- this screen never touches storage
-    directly (spec section 17). Folder/file picking + scanning
-    happens here (the same way student_setup.py already does it --
-    spec section 13, no parallel logic), but every resulting change
-    is handed back to App through a callback, which persists it via
-    storage.class_storage and re-renders this screen with the fresh
-    ClassRecord:
+    Same contract as before -- takes a parent frame and a
+    core.class_model.ClassRecord and renders straight from it; every
+    change is handed back to App through a callback (this screen
+    never touches storage):
 
         ClassScreen  ->  App  ->  class_storage  ->  classes/<id>/class.json
-
-    `confirm_delete` (Settings: "Confirm before deleting") controls
-    whether removing a student asks Yes/No first.
-
-    New feature: Student Search. A search field above the student
-    list filters the rows by student name as the professor types
-    (case-insensitive). It only changes which rows are displayed --
-    class_record.students is never modified, and every row keeps its
-    real index in that list, so open/delete/add-photos/start-grading
-    always act on the right student even while a filter is active.
     """
 
     def __init__(
@@ -46,7 +40,6 @@ class ClassScreen:
         on_add_photos,
         on_delete_student,
         on_start_grading,
-        confirm_delete=True,
     ):
 
         self.class_record = class_record
@@ -56,24 +49,8 @@ class ClassScreen:
         self.on_add_photos = on_add_photos
         self.on_delete_student = on_delete_student
         self.on_start_grading = on_start_grading
-        self.confirm_delete = confirm_delete
 
-        # Widgets currently shown inside the student list (student
-        # rows or an empty-state message), so a re-render can remove
-        # exactly those and nothing else.
-        self.row_widgets = []
-
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        self.container.pack(
-            fill="both",
-            expand=True,
-            padx=40,
-            pady=30
-        )
+        self.container = theme.page(parent)
 
         self.create_header()
         self.create_student_list()
@@ -85,84 +62,94 @@ class ClassScreen:
 
     def create_header(self):
 
-        header = ctk.CTkFrame(
+        record = self.class_record
+
+        self.header = theme.screen_header(
             self.container,
-            fg_color="transparent"
+            record.class_name,
+            subtitle=(
+                f"{record.student_count} Students • "
+                f"{record.total_photo_count} Photos • "
+                f"{record.completed_student_count} Completed"
+            ),
+            on_back=self.on_back
         )
 
-        header.pack(
-            fill="x",
-            pady=(0, 20)
-        )
+    def create_add_student_button(self):
 
-        ctk.CTkButton(
-            header,
-            text="← Back",
-            width=90,
-            height=32,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            text_color="#7CFFB2",
-            border_width=1,
-            command=self.on_back
-        ).pack(
-            side="left",
-            padx=(0, 15)
-        )
-
-        ctk.CTkLabel(
-            header,
-            text=self.class_record.class_name,
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(side="left")
+        theme.primary_button(
+            self.header,
+            "+  Add Student",
+            self.open_add_student_dialog,
+            width=150,
+            height=38
+        ).pack(side="right")
 
     # -----------------------------------------
     # STUDENT LIST
     # -----------------------------------------
 
+    def configure_columns(self, frame):
+        """Same column geometry for the header row and every student row."""
+
+        frame.grid_columnconfigure(0, weight=1, minsize=140)
+        frame.grid_columnconfigure(1, weight=0, minsize=COL_AVG)
+        frame.grid_columnconfigure(2, weight=0, minsize=COL_PHOTOS)
+        frame.grid_columnconfigure(3, weight=0, minsize=COL_GRADED)
+        frame.grid_columnconfigure(4, weight=0, minsize=COL_ACTIONS)
+
     def create_student_list(self):
 
-        card = ctk.CTkFrame(
-            self.container,
-            corner_radius=12
-        )
+        card = theme.card(self.container)
 
         card.pack(
             fill="both",
-            expand=True,
-            pady=(0, 20)
+            expand=True
         )
 
-        ctk.CTkLabel(
-            card,
-            text="Students",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(20, 10)
-        )
+        if not self.class_record.students:
 
-        # Student search (new feature). Packed before the list so it
-        # sits above it. Every key release re-filters the list.
-        self.student_search_entry = ctk.CTkEntry(
-            card,
-            placeholder_text="Search students..."
-        )
+            theme.label(
+                card,
+                "No students yet",
+                size=16,
+                weight="bold"
+            ).pack(pady=(60, 4))
 
-        self.student_search_entry.pack(
+            theme.muted(
+                card,
+                "Use “Add Student” to add the first one.",
+                size=13
+            ).pack()
+
+            return
+
+        header_row = ctk.CTkFrame(card, fg_color="transparent")
+
+        header_row.pack(
             fill="x",
-            padx=20,
-            pady=(0, 10)
+            padx=28,
+            pady=(16, 4)
         )
 
-        self.student_search_entry.bind(
-            "<KeyRelease>",
-            lambda event: self.render_student_list()
-        )
+        self.configure_columns(header_row)
+
+        for column, (text, anchor) in enumerate(
+            [("STUDENT", "w"), ("AVG TOTAL", "w"), ("PHOTOS", "w"), ("GRADED", "w")]
+        ):
+            theme.label(
+                header_row,
+                text,
+                size=11,
+                weight="bold",
+                color=theme.TEXT_FAINT,
+                anchor=anchor
+            ).grid(
+                row=0,
+                column=column,
+                sticky="w",
+                padx=(0, 6)
+            )
 
         self.student_list_frame = ctk.CTkScrollableFrame(
             card,
@@ -172,192 +159,171 @@ class ClassScreen:
         self.student_list_frame.pack(
             fill="both",
             expand=True,
-            padx=10,
-            pady=(0, 15)
+            padx=14,
+            pady=(0, 14)
         )
 
-        self.render_student_list()
-
-    def render_student_list(self):
-        """
-        (Re)builds the student rows from class_record.students,
-        showing only students whose name contains the search text
-        (case-insensitive). An empty search shows every student, in
-        the original order. Never modifies class_record.students.
-
-        Each row is created with the student's index in the *full*
-        list (not its position among the filtered rows), because
-        every row callback uses that index to find the student in
-        class_record.students.
-        """
-
-        for widget in self.row_widgets:
-            widget.destroy()
-
-        self.row_widgets = []
-
-        if not self.class_record.students:
-            self.show_empty_message("No students yet.")
-            return
-
-        query = self.student_search_entry.get().strip().lower()
-
-        matches = [
-            (index, student)
-            for index, student in enumerate(self.class_record.students)
-            if query in student.name.lower()
-        ]
-
-        if not matches:
-            self.show_empty_message("No matching students.")
-            return
-
-        for index, student in matches:
+        for index, student in enumerate(self.class_record.students):
             self.create_student_row(index, student)
-
-    def show_empty_message(self, text):
-
-        label = ctk.CTkLabel(
-            self.student_list_frame,
-            text=text,
-            text_color="gray60"
-        )
-
-        label.pack(pady=20)
-
-        self.row_widgets.append(label)
 
     def create_student_row(self, index, student):
 
         row = ctk.CTkFrame(
             self.student_list_frame,
-            fg_color="transparent"
+            fg_color=theme.SURFACE_ALT,
+            corner_radius=10
         )
 
         row.pack(
             fill="x",
-            pady=4
+            pady=3
         )
 
-        self.row_widgets.append(row)
+        inner = ctk.CTkFrame(row, fg_color="transparent")
 
-        name_label = ctk.CTkLabel(
-            row,
-            text=student.name,
+        inner.pack(
+            fill="x",
+            padx=14,
+            pady=10
+        )
+
+        self.configure_columns(inner)
+
+        name_label = theme.label(
+            inner,
+            student.name,
+            size=14,
+            weight="bold",
+            color=theme.TEXT,
             anchor="w",
-            width=140,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#7CFFB2",
             cursor="hand2"
         )
 
-        name_label.pack(
-            side="left",
-            padx=(10, 10)
+        name_label.grid(
+            row=0,
+            column=0,
+            sticky="w",
+            padx=(0, 6)
         )
 
-        name_label.bind(
-            "<Button-1>",
-            lambda event, i=index: self.on_open_student(self.class_record, i)
+        theme.make_clickable(
+            [name_label],
+            lambda i=index: self.on_open_student(self.class_record, i),
+            target=row
         )
 
-        # New feature: Avg Total Score, sourced from the same
-        # per-photo total_score data that powers the Student
-        # DataFrame -- no second calculation.
+        # Avg Total Score, from the same per-photo total_score data
+        # that powers the Student DataFrame -- no second calculation.
         avg_score = student.average_total_score
-        avg_text = "NaN" if math.isnan(avg_score) else f"{avg_score:g}"
 
-        ctk.CTkLabel(
-            row,
-            text=f"Avg Total: {avg_text}",
-            text_color="gray60",
-            width=140,
-            anchor="w"
+        if math.isnan(avg_score):
+            avg_pill = theme.pill(inner, "—", theme.TEXT_MUTED)
+        else:
+            avg_pill = theme.pill(inner, f"{avg_score:g}", theme.ACCENT)
+
+        avg_pill.grid(
+            row=0,
+            column=1,
+            sticky="w"
+        )
+
+        theme.muted(
+            inner,
+            str(student.photo_count),
+            size=13
+        ).grid(
+            row=0,
+            column=2,
+            sticky="w"
+        )
+
+        # Grading progress for this student: photos with a Total
+        # Score out of photos in the class record.
+        total = len(student.photos)
+        graded = sum(1 for photo in student.photos if photo.total_score is not None)
+
+        progress_cell = ctk.CTkFrame(inner, fg_color="transparent")
+
+        progress_cell.grid(
+            row=0,
+            column=3,
+            sticky="w"
+        )
+
+        if total:
+            theme.progress_bar(
+                progress_cell,
+                graded / total,
+                width=70,
+                color=theme.SUCCESS if graded == total else theme.ACCENT
+            ).pack(side="left")
+
+            theme.muted(
+                progress_cell,
+                f"{graded}/{total}",
+                size=12
+            ).pack(
+                side="left",
+                padx=(8, 0)
+            )
+        else:
+            theme.muted(progress_cell, "—", size=13).pack(side="left")
+
+        actions = ctk.CTkFrame(inner, fg_color="transparent")
+
+        actions.grid(
+            row=0,
+            column=4,
+            sticky="e"
+        )
+
+        theme.secondary_button(
+            actions,
+            "Start Grading",
+            lambda i=index: self.handle_start_grading(i),
+            width=112,
+            height=30
+        ).pack(side="left")
+
+        theme.ghost_button(
+            actions,
+            "+ Folder",
+            lambda i=index: self.handle_add_photos_folder(i),
+            width=68
         ).pack(
             side="left",
-            padx=(0, 10)
+            padx=(6, 0)
         )
 
-        ctk.CTkLabel(
-            row,
-            text=f"{student.photo_count} photos",
-            text_color="gray60"
+        theme.ghost_button(
+            actions,
+            "+ Files",
+            lambda i=index: self.handle_add_photos_files(i),
+            width=62
         ).pack(
             side="left",
-            fill="x",
-            expand=True
+            padx=(2, 0)
         )
 
-        ctk.CTkButton(
-            row,
-            text="🗑",
-            width=32,
-            height=28,
-            fg_color="transparent",
-            hover_color="#3a1f1f",
-            text_color="#FF6B6B",
-            command=lambda i=index: self.handle_delete_student(i)
-        ).pack(side="right")
-
-        ctk.CTkButton(
-            row,
-            text="📁+",
-            width=40,
-            height=28,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=lambda i=index: self.handle_add_photos_folder(i)
+        theme.danger_button(
+            actions,
+            "Remove",
+            lambda i=index: self.handle_delete_student(i),
+            width=64
         ).pack(
-            side="right",
-            padx=(0, 8)
-        )
-
-        ctk.CTkButton(
-            row,
-            text="🖼+",
-            width=40,
-            height=28,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=lambda i=index: self.handle_add_photos_files(i)
-        ).pack(
-            side="right",
-            padx=(0, 8)
-        )
-
-        ctk.CTkButton(
-            row,
-            text="Start Grading",
-            width=110,
-            height=28,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=lambda i=index: self.handle_start_grading(i)
-        ).pack(
-            side="right",
-            padx=(0, 8)
+            side="left",
+            padx=(2, 0)
         )
 
     # -----------------------------------------
-    # START GRADING (new feature -- inactive for now: the student
-    # is added to the class, but running them through the Rule
-    # Engine / Teacher Grading review flow is a later feature)
+    # START GRADING
     # -----------------------------------------
 
     def handle_start_grading(self, index):
         self.on_start_grading(self.class_record, index)
 
     # -----------------------------------------
-    # ADD PHOTOS (spec section 14, extended with file selection)
+    # ADD PHOTOS
     # -----------------------------------------
 
     def handle_add_photos_folder(self, index):
@@ -405,16 +371,10 @@ class ClassScreen:
         )
 
     # -----------------------------------------
-    # DELETE STUDENT (spec section 15)
+    # DELETE STUDENT
     # -----------------------------------------
 
     def handle_delete_student(self, index):
-
-        # "Confirm before deleting" off in Settings -> delete right
-        # away, same as before confirmations existed.
-        if not self.confirm_delete:
-            self.on_delete_student(self.class_record, index)
-            return
 
         student = self.class_record.students[index]
 
@@ -425,74 +385,73 @@ class ClassScreen:
         )
 
     # -----------------------------------------
-    # ADD NEW STUDENT (spec section 12, extended with file selection)
+    # ADD NEW STUDENT
     # -----------------------------------------
-
-    def create_add_student_button(self):
-
-        ctk.CTkButton(
-            self.container,
-            text="+ Add New Student",
-            width=200,
-            height=40,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.open_add_student_dialog
-        ).pack(anchor="w")
 
     def open_add_student_dialog(self):
 
-        dialog = ctk.CTkToplevel(self.container)
-
-        dialog.title("Add New Student")
-        dialog.geometry("440x360")
-        dialog.resizable(False, False)
-        dialog.grab_set()
-
-        ctk.CTkLabel(
-            dialog,
-            text="Add New Student",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(pady=(20, 15))
-
-        ctk.CTkLabel(
-            dialog,
-            text="Student Name",
-            anchor="w",
-            font=ctk.CTkFont(size=13, weight="bold")
-        ).pack(
-            anchor="w",
-            padx=20
+        dialog = create_modal(
+            self.container,
+            "Add New Student",
+            480,
+            430,
+            accent=theme.ACCENT
         )
 
-        name_entry = ctk.CTkEntry(
+        theme.label(
+            dialog,
+            "Add new student",
+            size=18,
+            weight="bold"
+        ).pack(
+            anchor="w",
+            padx=26,
+            pady=(22, 16)
+        )
+
+        theme.label(
+            dialog,
+            "Student name",
+            size=12,
+            weight="bold",
+            color=theme.TEXT_MUTED
+        ).pack(
+            anchor="w",
+            padx=26
+        )
+
+        name_entry = theme.text_entry(
             dialog,
             placeholder_text="Enter student name"
         )
 
         name_entry.pack(
             fill="x",
-            padx=20,
-            pady=(5, 15)
+            padx=26,
+            pady=(6, 16)
         )
 
-        ctk.CTkLabel(
+        theme.label(
             dialog,
-            text="Photos",
-            anchor="w",
-            font=ctk.CTkFont(size=13, weight="bold")
+            "Photos",
+            size=12,
+            weight="bold",
+            color=theme.TEXT_MUTED
         ).pack(
             anchor="w",
-            padx=20
+            padx=26
         )
 
         selected = {"image_paths": None, "folder_path": None}
 
-        status_label = ctk.CTkLabel(
+        status_label = theme.label(
             dialog,
-            text="No photos selected",
-            text_color="gray60"
+            "No photos selected",
+            size=13,
+            color=theme.TEXT_MUTED,
+            anchor="w",
+            wraplength=400,
+            justify="left"
         )
 
         def select_folder():
@@ -508,8 +467,8 @@ class ClassScreen:
                 image_paths = scan_student_folder(folder_path)
             except FolderValidationError as error:
                 status_label.configure(
-                    text=f"⚠️ {error}",
-                    text_color="#FF6B6B"
+                    text=f"⚠ {error}",
+                    text_color=theme.DANGER
                 )
                 return
 
@@ -517,8 +476,8 @@ class ClassScreen:
             selected["folder_path"] = folder_path
 
             status_label.configure(
-                text=f"✅ {len(image_paths)} image(s) from folder",
-                text_color="#7CFFB2"
+                text=f"✓ {len(image_paths)} image(s) from folder",
+                text_color=theme.SUCCESS
             )
 
         def select_files():
@@ -534,8 +493,8 @@ class ClassScreen:
                 image_paths = validate_selected_files(file_paths)
             except FolderValidationError as error:
                 status_label.configure(
-                    text=f"⚠️ {error}",
-                    text_color="#FF6B6B"
+                    text=f"⚠ {error}",
+                    text_color=theme.DANGER
                 )
                 return
 
@@ -543,8 +502,8 @@ class ClassScreen:
             selected["folder_path"] = None
 
             status_label.configure(
-                text=f"✅ {len(image_paths)} image(s) selected",
-                text_color="#7CFFB2"
+                text=f"✓ {len(image_paths)} image(s) selected",
+                text_color=theme.SUCCESS
             )
 
         button_frame = ctk.CTkFrame(
@@ -554,42 +513,40 @@ class ClassScreen:
 
         button_frame.pack(
             anchor="w",
-            padx=20,
-            pady=(5, 5)
+            padx=26,
+            pady=(6, 8)
         )
 
-        ctk.CTkButton(
+        theme.secondary_button(
             button_frame,
-            text="Select Folder",
-            width=130,
-            command=select_folder
+            "Select Folder",
+            select_folder,
+            width=140,
+            height=36
         ).pack(
             side="left",
             padx=(0, 10)
         )
 
-        ctk.CTkButton(
+        theme.secondary_button(
             button_frame,
-            text="Select Files",
-            width=130,
-            command=select_files
+            "Select Files",
+            select_files,
+            width=140,
+            height=36
         ).pack(side="left")
 
         status_label.pack(
             anchor="w",
-            padx=20,
-            pady=(0, 10)
+            padx=26,
+            pady=(0, 6)
         )
 
-        error_label = ctk.CTkLabel(
-            dialog,
-            text="",
-            text_color="#FF6B6B"
-        )
+        error_label = theme.error_label(dialog)
 
         error_label.pack(
             anchor="w",
-            padx=20
+            padx=26
         )
 
         def handle_add():
@@ -619,31 +576,30 @@ class ClassScreen:
             fg_color="transparent"
         )
 
-        button_row.pack(pady=(15, 0))
+        button_row.pack(pady=(14, 0))
 
-        ctk.CTkButton(
+        theme.secondary_button(
             button_row,
-            text="Cancel",
-            width=100,
-            fg_color="transparent",
-            hover_color="#3a1f1f",
-            border_color="#FF6B6B",
-            border_width=1,
-            text_color="#FF6B6B",
-            command=dialog.destroy
+            "Cancel",
+            dialog.destroy,
+            width=110,
+            height=38
         ).pack(
             side="left",
-            padx=10
+            padx=8
         )
 
-        ctk.CTkButton(
+        theme.primary_button(
             button_row,
-            text="Add Student",
+            "Add Student",
+            handle_add,
             width=140,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=handle_add
+            height=38
         ).pack(
             side="left",
-            padx=10
+            padx=8
         )
+
+        name_entry.bind("<Return>", lambda event: handle_add())
+
+        dialog.after(200, name_entry.focus)

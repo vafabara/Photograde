@@ -1,233 +1,134 @@
 import customtkinter as ctk
 
+from . import theme
 from .widgets import show_confirm
 
 
 class HomeScreen:
     """
-    The Home Page (spec: Welcome + Previous Classes + New Class).
+    The Home Page: Previous Classes + New Class form.
 
-    Follows the same pattern as RuleEngineScreen: takes a parent
-    frame, builds its own widgets into it, and calls
-    `on_continue(class_name, student_count)` once the New Class
-    form validates.
+    Same contract as before: takes a parent frame and builds into it.
+    `classes` is a list of core.class_model.ClassRecord that App
+    already loaded from storage; this screen only renders them and
+    reports back what the professor did (it never touches storage):
 
-    Previous Classes is now backed by real, persisted classes (new
-    feature: Class Management) -- `classes` is a list of
-    core.class_model.ClassRecord that App already loaded from
-    storage.class_storage. This screen only renders them and reports
-    back what the professor clicked; it never touches storage or
-    JSON itself (spec section 17):
-
-      - clicking a class name calls `on_open_class(class_id)`
-      - clicking Delete asks for confirmation right here, and only
-        calls `on_delete_class(class_id)` if the professor picks Yes
-
-    New feature: Grading Progress, Save & Continue. `active_session`
-    is the saved grading session dict App loaded from
-    storage.grading_session (or None). When there is one, a
-    "Continue (ClassName) Grading" card is shown at the top of the
-    left column; clicking it calls `on_continue_grading()`.
+      - New Class form validates, then calls
+        `on_continue(class_name, student_count)`
+      - clicking a class calls `on_open_class(class_id)`
+      - clicking Delete asks for confirmation here, and only calls
+        `on_delete_class(class_id)` if the professor picks Yes
     """
 
-    def __init__(
-        self,
-        parent,
-        classes,
-        on_continue,
-        on_open_class,
-        on_delete_class,
-        active_session=None,
-        on_continue_grading=None,
-    ):
+    def __init__(self, parent, classes, on_continue, on_open_class, on_delete_class):
 
         self.classes = classes
         self.on_continue = on_continue
         self.on_open_class = on_open_class
         self.on_delete_class = on_delete_class
-        self.active_session = active_session
-        self.on_continue_grading = on_continue_grading
 
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
+        self.container = theme.page(parent)
 
-        self.container.pack(
+        self.create_hero()
+
+        body = ctk.CTkFrame(self.container, fg_color="transparent")
+
+        body.pack(
             fill="both",
-            expand=True,
-            padx=40,
-            pady=30
+            expand=True
         )
 
-        # Two-column layout: left column (Welcome + Previous Classes)
-        # and right column (New Class form).
-        self.left_column = ctk.CTkFrame(
-            self.container,
-            fg_color="transparent"
-        )
+        # Previous Classes gets the larger share; New Class is a
+        # fixed-feeling form column that still resizes gracefully.
+        body.grid_columnconfigure(0, weight=3, uniform="home")
+        body.grid_columnconfigure(1, weight=2, uniform="home")
+        body.grid_rowconfigure(0, weight=1)
 
-        self.left_column.pack(
-            side="left",
-            fill="both",
-            expand=True,
-            padx=(0, 15)
-        )
+        self.left_column = ctk.CTkFrame(body, fg_color="transparent")
+        self.left_column.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
 
-        self.right_column = ctk.CTkFrame(
-            self.container,
-            fg_color="transparent"
-        )
+        self.right_column = ctk.CTkFrame(body, fg_color="transparent")
+        self.right_column.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
 
-        self.right_column.pack(
-            side="left",
-            fill="both",
-            expand=True,
-            padx=(15, 0)
-        )
-
-        if self.active_session:
-            self.create_continue_card()
-
-        self.create_welcome_card()
         self.create_previous_classes_card()
         self.create_new_class_card()
 
     # -----------------------------------------
-    # LEFT — CONTINUE GRADING CARD
-    # (new feature: Grading Progress, Save & Continue)
+    # HERO
     # -----------------------------------------
 
-    def create_continue_card(self):
+    def create_hero(self):
 
-        class_name = self.active_session["class_name"]
-        position = self.active_session["current_index"] + 1
-        total = len(self.active_session["photos"])
+        hero = ctk.CTkFrame(self.container, fg_color="transparent")
 
-        card = ctk.CTkFrame(
-            self.left_column,
-            corner_radius=12
-        )
-
-        card.pack(
+        hero.pack(
             fill="x",
-            pady=(0, 15)
+            pady=(0, 22)
         )
 
-        ctk.CTkLabel(
-            card,
-            text="Unfinished Grading",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(20, 5)
-        )
+        theme.label(
+            hero,
+            "PhotoGrade",
+            size=32,
+            weight="bold",
+            color=theme.ACCENT,
+            anchor="w"
+        ).pack(anchor="w")
 
-        ctk.CTkLabel(
-            card,
-            text=f"Saved at photo {position}/{total}",
-            text_color="gray60",
-            font=ctk.CTkFont(size=13)
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(0, 10)
-        )
-
-        ctk.CTkButton(
-            card,
-            text=f"Continue ({class_name}) Grading",
-            height=36,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.handle_continue_grading
-        ).pack(
-            fill="x",
-            padx=20,
-            pady=(0, 20)
-        )
-
-    def handle_continue_grading(self):
-
-        if self.on_continue_grading:
-            self.on_continue_grading()
-
-    # -----------------------------------------
-    # LEFT — WELCOME CARD
-    # -----------------------------------------
-
-    def create_welcome_card(self):
-
-        card = ctk.CTkFrame(
-            self.left_column,
-            corner_radius=12
-        )
-
-        card.pack(
-            fill="x",
-            pady=(0, 15)
-        )
-
-        ctk.CTkLabel(
-            card,
-            text="Welcome to PhotoGrade",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(20, 10)
-        )
-
-        ctk.CTkLabel(
-            card,
-            text=(
+        theme.muted(
+            hero,
+            (
                 "PhotoGrade helps photography instructors evaluate "
                 "students' photos using image metadata and technical "
                 "grading rules. Create a new class to get started."
             ),
-            text_color="gray60",
-            font=ctk.CTkFont(size=13),
+            size=13,
+            anchor="w",
             justify="left",
-            wraplength=380
+            wraplength=760
         ).pack(
             anchor="w",
-            padx=20,
-            pady=(0, 20)
+            pady=(4, 0)
         )
 
     # -----------------------------------------
-    # LEFT — PREVIOUS CLASSES CARD
+    # LEFT — PREVIOUS CLASSES
     # -----------------------------------------
 
     def create_previous_classes_card(self):
 
-        card = ctk.CTkFrame(
-            self.left_column,
-            corner_radius=12
-        )
+        card = theme.card(self.left_column)
 
         card.pack(
             fill="both",
             expand=True
         )
 
-        ctk.CTkLabel(
-            card,
-            text="Previous Classes",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(
-            anchor="w",
-            padx=20,
+        header = ctk.CTkFrame(card, fg_color="transparent")
+
+        header.pack(
+            fill="x",
+            padx=22,
             pady=(20, 10)
         )
 
-        # Scrollable list so it works the same way once real
-        # classes are loaded in later (same pattern used elsewhere
-        # in the app for lists, e.g. RuleEngineScreen's factor list).
+        theme.label(
+            header,
+            "Previous classes",
+            size=18,
+            weight="bold"
+        ).pack(side="left")
+
+        if self.classes:
+            theme.muted(
+                header,
+                str(len(self.classes)),
+                size=13
+            ).pack(
+                side="left",
+                padx=(10, 0)
+            )
+
         self.previous_classes_frame = ctk.CTkScrollableFrame(
             card,
             fg_color="transparent"
@@ -236,34 +137,51 @@ class HomeScreen:
         self.previous_classes_frame.pack(
             fill="both",
             expand=True,
-            padx=10,
-            pady=(0, 15)
+            padx=12,
+            pady=(0, 14)
         )
 
         if not self.classes:
-
-            ctk.CTkLabel(
-                self.previous_classes_frame,
-                text="No classes yet",
-                text_color="gray60"
-            ).pack(pady=20)
-
+            self.create_empty_state()
             return
 
         for class_record in self.classes:
             self.create_previous_class_row(class_record)
 
+    def create_empty_state(self):
+
+        empty = ctk.CTkFrame(
+            self.previous_classes_frame,
+            fg_color="transparent"
+        )
+
+        empty.pack(pady=40)
+
+        theme.label(
+            empty,
+            "No classes yet",
+            size=16,
+            weight="bold"
+        ).pack()
+
+        theme.muted(
+            empty,
+            "Create your first class using the form on the right.",
+            size=13
+        ).pack(pady=(4, 0))
+
     def create_previous_class_row(self, class_record):
         """
-        One row in the Previous Classes list: class name + a
-        "N Students • M Photos" subtitle + a Delete icon. Clicking
-        the name/subtitle opens the class (on_open_class); clicking
+        One row: class name, "N Students • M Photos", a grading
+        progress bar (students completed / total) and a Delete
+        button. Clicking anywhere on the text area opens the class;
         Delete asks for confirmation before removing anything.
         """
 
         row = ctk.CTkFrame(
             self.previous_classes_frame,
-            fg_color="transparent"
+            fg_color=theme.SURFACE_ALT,
+            corner_radius=10
         )
 
         row.pack(
@@ -271,24 +189,29 @@ class HomeScreen:
             pady=4
         )
 
+        row.grid_columnconfigure(0, weight=1)
+
         text_column = ctk.CTkFrame(
             row,
             fg_color="transparent",
             cursor="hand2"
         )
 
-        text_column.pack(
-            side="left",
-            fill="x",
-            expand=True,
-            padx=(10, 10)
+        text_column.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=(16, 8),
+            pady=12
         )
 
-        name_label = ctk.CTkLabel(
+        name_label = theme.label(
             text_column,
-            text=class_record.class_name,
+            class_record.class_name,
+            size=15,
+            weight="bold",
             anchor="w",
-            font=ctk.CTkFont(size=14, weight="bold")
+            cursor="hand2"
         )
 
         name_label.pack(
@@ -296,15 +219,14 @@ class HomeScreen:
             fill="x"
         )
 
-        subtitle_label = ctk.CTkLabel(
+        subtitle_label = theme.muted(
             text_column,
-            text=(
+            (
                 f"{class_record.student_count} Students • "
                 f"{class_record.total_photo_count} Photos"
             ),
             anchor="w",
-            text_color="gray60",
-            font=ctk.CTkFont(size=12)
+            cursor="hand2"
         )
 
         subtitle_label.pack(
@@ -312,131 +234,177 @@ class HomeScreen:
             fill="x"
         )
 
+        clickable = [row, text_column, name_label, subtitle_label]
+
+        if class_record.student_count:
+
+            done = class_record.completed_student_count
+            total = class_record.student_count
+
+            progress_row = ctk.CTkFrame(
+                text_column,
+                fg_color="transparent",
+                cursor="hand2"
+            )
+
+            progress_row.pack(
+                anchor="w",
+                fill="x",
+                pady=(8, 0)
+            )
+
+            bar = theme.progress_bar(
+                progress_row,
+                done / total,
+                width=160,
+                color=theme.SUCCESS if done == total else theme.ACCENT
+            )
+
+            bar.pack(side="left")
+
+            progress_text = theme.muted(
+                progress_row,
+                f"{done} of {total} graded",
+                cursor="hand2"
+            )
+
+            progress_text.pack(
+                side="left",
+                padx=(10, 0)
+            )
+
+            clickable += [progress_row, progress_text]
+
         def handle_open(event=None):
             self.on_open_class(class_record.class_id)
 
-        text_column.bind("<Button-1>", handle_open)
-        name_label.bind("<Button-1>", handle_open)
-        subtitle_label.bind("<Button-1>", handle_open)
+        theme.make_clickable(clickable, handle_open, target=row)
 
-        ctk.CTkButton(
+        theme.danger_button(
             row,
-            text="🗑️",
-            width=32,
-            height=28,
-            fg_color="transparent",
-            hover_color="#3a1f1f",
-            text_color="#FF6B6B",
-            command=lambda: self.handle_delete_class(class_record)
-        ).pack(side="right")
+            "Delete",
+            lambda: self.handle_delete_class(class_record)
+        ).grid(
+            row=0,
+            column=1,
+            padx=(0, 12)
+        )
 
     def handle_delete_class(self, class_record):
         """
-        Shows a Yes/No confirmation (spec section 11) and only calls
-        on_delete_class -- App's job, not this screen's, to actually
-        touch storage -- if the professor confirms.
+        Shows a Yes/No confirmation and only calls on_delete_class --
+        App's job, not this screen's, to actually touch storage -- if
+        the professor confirms.
         """
 
         show_confirm(
-            self.previous_classes_frame,
+            self.container,
             f'Are you sure you want to delete\n"{class_record.class_name}"?',
             on_yes=lambda: self.on_delete_class(class_record.class_id)
         )
 
     # -----------------------------------------
-    # RIGHT — NEW CLASS CARD
+    # RIGHT — NEW CLASS
     # -----------------------------------------
 
     def create_new_class_card(self):
 
-        card = ctk.CTkFrame(
-            self.right_column,
-            corner_radius=12
-        )
+        card = theme.card(self.right_column)
 
         card.pack(
             fill="both",
             expand=True
         )
 
-        ctk.CTkLabel(
+        theme.label(
             card,
-            text="New Class",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color="#7CFFB2"
+            "New class",
+            size=18,
+            weight="bold"
         ).pack(
             anchor="w",
-            padx=20,
-            pady=(20, 15)
+            padx=22,
+            pady=(20, 4)
         )
 
-        ctk.CTkLabel(
+        theme.muted(
             card,
-            text="Class Name",
-            anchor="w",
-            font=ctk.CTkFont(size=13, weight="bold")
+            "You'll add student names and photos next.",
+            size=13
         ).pack(
             anchor="w",
-            padx=20
+            padx=22,
+            pady=(0, 18)
         )
 
-        self.class_name_entry = ctk.CTkEntry(
+        theme.label(
             card,
-            placeholder_text="Enter class name"
+            "Class name",
+            size=12,
+            weight="bold",
+            color=theme.TEXT_MUTED,
+            anchor="w"
+        ).pack(
+            anchor="w",
+            padx=22
+        )
+
+        self.class_name_entry = theme.text_entry(
+            card,
+            placeholder_text="e.g. Photography 101"
         )
 
         self.class_name_entry.pack(
             fill="x",
-            padx=20,
-            pady=(5, 15)
+            padx=22,
+            pady=(6, 16)
         )
 
-        ctk.CTkLabel(
+        theme.label(
             card,
-            text="Number of Students",
-            anchor="w",
-            font=ctk.CTkFont(size=13, weight="bold")
+            "Number of students",
+            size=12,
+            weight="bold",
+            color=theme.TEXT_MUTED,
+            anchor="w"
         ).pack(
             anchor="w",
-            padx=20
+            padx=22
         )
 
-        self.student_count_entry = ctk.CTkEntry(
+        self.student_count_entry = theme.text_entry(
             card,
-            placeholder_text="Enter number of students"
+            placeholder_text="e.g. 12"
         )
 
         self.student_count_entry.pack(
             fill="x",
-            padx=20,
-            pady=(5, 15)
+            padx=22,
+            pady=(6, 12)
         )
 
-        self.error_label = ctk.CTkLabel(
-            card,
-            text="",
-            text_color="#FF6B6B"
-        )
+        self.error_label = theme.error_label(card, wraplength=320, justify="left")
 
         self.error_label.pack(
             anchor="w",
-            padx=20,
-            pady=(0, 5)
+            padx=22,
+            pady=(0, 6)
         )
 
-        ctk.CTkButton(
+        theme.primary_button(
             card,
-            text="Next",
-            width=150,
-            height=40,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.handle_next
+            "Continue  →",
+            self.handle_next,
+            width=170,
+            height=42
         ).pack(
             anchor="w",
-            padx=20,
-            pady=(5, 20)
+            padx=22,
+            pady=(4, 22)
         )
+
+        self.class_name_entry.bind("<Return>", lambda event: self.student_count_entry.focus())
+        self.student_count_entry.bind("<Return>", lambda event: self.handle_next())
 
     # -----------------------------------------
     # VALIDATION / SUBMIT

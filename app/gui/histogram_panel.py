@@ -1,29 +1,53 @@
-import customtkinter as ctk
 from tkinter import Canvas
-from ..core.histogram import get_histogram
 
+from ..core.histogram import get_histogram
+from . import theme
+
+CHANNEL_COLORS = {
+    "r": "#FF6B6B",
+    "g": "#5CE08F",
+    "b": "#5CA8FF",
+}
 
 
 class HistogramPanel:
+    """
+    RGB histogram drawn on a plain tkinter Canvas. Same API as
+    before (`HistogramPanel(parent)`, `.update(image)`); it now also
+    redraws itself when the window is resized instead of keeping a
+    stale width.
+    """
 
     def __init__(self, parent):
+
+        self.histogram = None
+
         self.canvas = Canvas(
             parent,
             height=110,
-            bg="#1a1a1a",
-            highlightthickness=0
+            bg=theme.BG,
+            highlightthickness=1,
+            highlightbackground=theme.BORDER
         )
 
         self.canvas.pack(
             side="bottom",
             fill="x",
-            padx=12,
-            pady=12
+            padx=14,
+            pady=(0, 14)
         )
+
+        self.canvas.bind("<Configure>", lambda event: self.draw())
 
     def update(self, image):
 
-        self.canvas.update_idletasks()
+        self.histogram = get_histogram(image)
+
+        self.draw()
+
+    def draw(self):
+
+        self.canvas.delete("all")
 
         width = self.canvas.winfo_width()
         height = self.canvas.winfo_height()
@@ -31,19 +55,26 @@ class HistogramPanel:
         if width <= 1 or height <= 1:
             width, height = 400, 110
 
-        self.canvas.delete("all")
+        # faint quarter guides
+        for fraction in (0.25, 0.5, 0.75):
+            x = width * fraction
+            self.canvas.create_line(x, 0, x, height, fill=theme.SURFACE_ALT)
 
-        histogram = get_histogram(image)
+        self.canvas.create_text(
+            8,
+            6,
+            text="HISTOGRAM",
+            anchor="nw",
+            fill=theme.TEXT_FAINT,
+            font=("TkDefaultFont", 8, "bold")
+        )
 
-        colors = {
-            "r": "#FF5C5C",
-            "g": "#5CFF9C",
-            "b": "#5CA8FF"
-        }
+        if self.histogram is None:
+            return
 
-        for channel, color in colors.items():
+        for channel, color in CHANNEL_COLORS.items():
 
-            values = histogram[channel]
+            values = self.histogram[channel]
             max_value = max(values) or 1
 
             points = []

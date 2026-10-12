@@ -7,36 +7,29 @@ from ..core.rules import (
     build_rule,
     validate_score_split,
 )
+from . import theme
 from .widgets import show_prompt
 
 
 class RuleEngineScreen:
     """
-    The 'Rule Engine' setup screen (spec sections 1-3).
+    The 'Rule Engine' setup screen.
 
     Lets the professor set a Minimum/Maximum range per metadata
     factor and choose how the total 100 points split between System
     and Human grading. Calls `on_continue(config)` with a
     RuleEngineConfig once the input validates.
 
-    Also offers a Skip option (new feature: Rule Engine Skip) for a
-    professor who wants to grade entirely manually -- calls
-    `on_skip()` directly, with no Rule Engine validation at all.
+    Also offers a Skip option for a professor who wants to grade
+    entirely manually -- calls `on_skip()` directly, with no Rule
+    Engine validation at all.
 
-    New feature: Rule Engine Presets. `presets` is a
-    {name: RuleEngineConfig} dict the caller already loaded from
-    storage.rule_presets -- this screen only renders it and lets the
-    professor load one into the form above. Saving a new preset
-    reuses the exact same validation as Continue (via build_config())
-    and calls `on_save_preset(name, config)`; persisting it and
-    refreshing the list is the caller's job (same "screen renders,
-    App persists" split used everywhere else in the app).
-
-    New feature: Settings defaults. `default_system_score` pre-fills
-    the System Score box, and `default_tolerance_percent` (a
-    percentage like 15) is the tolerance given to every NEW Rule
-    this screen builds. Both only affect configurations created
-    here -- a preset that is loaded keeps its own saved tolerance.
+    `presets` is a {name: RuleEngineConfig} dict the caller already
+    loaded from storage.rule_presets -- this screen only renders it
+    and lets the professor load one into the form. Saving a new
+    preset reuses the exact same validation as Continue (via
+    build_config()) and calls `on_save_preset(name, config)`;
+    persisting it and refreshing the list is the caller's job.
     """
 
     def __init__(
@@ -47,60 +40,56 @@ class RuleEngineScreen:
         on_save_preset=None,
         presets=None,
         banner_text=None,
-        default_system_score=None,
-        default_tolerance_percent=None,
     ):
 
         self.on_continue = on_continue
         self.on_skip = on_skip
         self.on_save_preset = on_save_preset
         self.presets = presets or {}
-        self.default_tolerance_percent = default_tolerance_percent
         self.factor_entries = {}
 
-        # {factor: tolerance fraction} for rules loaded from a
-        # preset, so they keep the tolerance they were saved with
-        # instead of being re-stamped with today's default.
-        self.loaded_tolerance = {}
-
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        self.container.pack(
-            fill="both",
-            expand=True,
-            padx=40,
-            pady=30
-        )
+        self.container = theme.page(parent)
 
         if banner_text:
-            # New feature: Class Management -- shown once, right
-            # above the Rule Engine title, after a class has just
-            # been created and saved (spec section 5).
-            ctk.CTkLabel(
+            # Shown once, above the title, right after a class has
+            # just been created and saved.
+            banner = ctk.CTkFrame(
                 self.container,
-                text=f"✅ {banner_text}",
-                font=ctk.CTkFont(size=14, weight="bold"),
-                text_color="#7CFFB2"
-            ).pack(pady=(0, 10))
+                fg_color=theme.TINTS[theme.SUCCESS],
+                corner_radius=10
+            )
 
-        ctk.CTkLabel(
-            self.container,
-            text="Rule Engine",
-            font=ctk.CTkFont(size=22, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(pady=(0, 5))
+            banner.pack(
+                fill="x",
+                pady=(0, 14)
+            )
 
-        ctk.CTkLabel(
+            theme.label(
+                banner,
+                f"✓  {banner_text}",
+                size=13,
+                weight="bold",
+                color=theme.SUCCESS,
+                anchor="w"
+            ).pack(
+                anchor="w",
+                padx=16,
+                pady=9
+            )
+
+        theme.screen_header(
             self.container,
-            text=(
+            "Rule Engine",
+            subtitle=(
                 "Set a valid range for each factor. Leave both fields "
                 "blank to skip grading that factor."
-            ),
-            text_color="gray60"
-        ).pack(pady=(0, 15))
+            )
+        )
+
+        # Footer is packed first (side="bottom") so the buttons stay
+        # visible however small the window is; the scrollable form
+        # takes whatever space remains.
+        self.create_footer()
 
         self.scroll_frame = ctk.CTkScrollableFrame(
             self.container,
@@ -114,96 +103,168 @@ class RuleEngineScreen:
 
         self.create_factor_rows()
         self.create_score_split_row()
-
-        if default_system_score is not None:
-            self.system_score_entry.insert(0, str(int(default_system_score)))
-            self.update_human_score_preview()
-
-        self.error_label = ctk.CTkLabel(
-            self.container,
-            text="",
-            text_color="#FF6B6B"
-        )
-
-        self.error_label.pack(pady=(10, 5))
-
-        self.create_action_buttons()
         self.create_presets_section()
 
     # -----------------------------------------
-    # ROWS
+    # FACTOR RANGES
     # -----------------------------------------
 
     def create_factor_rows(self):
 
+        card = theme.card(self.scroll_frame)
+
+        card.pack(
+            fill="x",
+            pady=(0, 14),
+            padx=(0, 6)
+        )
+
+        theme.label(
+            card,
+            "Technical ranges",
+            size=16,
+            weight="bold"
+        ).pack(
+            anchor="w",
+            padx=22,
+            pady=(18, 8)
+        )
+
         for factor, info in FACTORS.items():
 
             row = ctk.CTkFrame(
-                self.scroll_frame,
-                fg_color="transparent"
+                card,
+                fg_color=theme.SURFACE_ALT,
+                corner_radius=10
             )
 
             row.pack(
                 fill="x",
-                pady=8
+                padx=16,
+                pady=4
             )
 
-            ctk.CTkLabel(
+            row.grid_columnconfigure(3, weight=1)
+
+            theme.label(
                 row,
-                text=info["label"],
-                width=200,
-                anchor="w",
-                font=ctk.CTkFont(size=14, weight="bold")
-            ).pack(
-                side="left",
-                padx=(0, 10)
+                info["label"],
+                size=14,
+                weight="bold",
+                width=210,
+                anchor="w"
+            ).grid(
+                row=0,
+                column=0,
+                padx=(16, 10),
+                pady=12,
+                sticky="w"
             )
 
-            min_entry = ctk.CTkEntry(
+            min_entry = theme.text_entry(
                 row,
-                width=100,
+                width=110,
                 placeholder_text="Minimum"
             )
 
-            min_entry.pack(
-                side="left",
+            min_entry.grid(
+                row=0,
+                column=1,
                 padx=(0, 10)
             )
 
-            max_entry = ctk.CTkEntry(
+            max_entry = theme.text_entry(
                 row,
-                width=100,
+                width=110,
                 placeholder_text="Maximum"
             )
 
-            max_entry.pack(side="left")
+            max_entry.grid(
+                row=0,
+                column=2,
+                padx=(0, 14)
+            )
+
+            theme.muted(
+                row,
+                (
+                    f"allowed {info['valid_min']:.5f}".rstrip("0").rstrip(".")
+                    + f" – {info['valid_max']:g}"
+                ),
+                anchor="w"
+            ).grid(
+                row=0,
+                column=3,
+                sticky="w"
+            )
 
             self.factor_entries[factor] = (min_entry, max_entry)
 
+        # bottom spacing inside the card
+        ctk.CTkFrame(card, height=10, fg_color="transparent").pack()
+
+    # -----------------------------------------
+    # SCORE SPLIT
+    # -----------------------------------------
+
     def create_score_split_row(self):
 
-        row = ctk.CTkFrame(
-            self.container,
-            fg_color="transparent"
+        card = theme.card(self.scroll_frame)
+
+        card.pack(
+            fill="x",
+            pady=(0, 14),
+            padx=(0, 6)
         )
+
+        theme.label(
+            card,
+            "Score split",
+            size=16,
+            weight="bold"
+        ).pack(
+            anchor="w",
+            padx=22,
+            pady=(18, 2)
+        )
+
+        theme.muted(
+            card,
+            (
+                "System points are graded automatically from the ranges "
+                "above. Human points are the ones you assign per photo."
+            ),
+            size=13,
+            anchor="w",
+            justify="left",
+            wraplength=700
+        ).pack(
+            anchor="w",
+            padx=22,
+            pady=(0, 12)
+        )
+
+        row = ctk.CTkFrame(card, fg_color="transparent")
 
         row.pack(
             fill="x",
-            pady=(15, 0)
+            padx=22,
+            pady=(0, 8)
         )
 
-        ctk.CTkLabel(
+        theme.label(
             row,
-            text="System Score (0-100):",
-            width=200,
-            anchor="w",
-            font=ctk.CTkFont(size=14, weight="bold")
+            "System Score (0-100):",
+            size=14,
+            weight="bold",
+            width=190,
+            anchor="w"
         ).pack(
             side="left",
             padx=(0, 10)
         )
 
-        self.system_score_entry = ctk.CTkEntry(
+        self.system_score_entry = theme.text_entry(
             row,
             width=100,
             placeholder_text="e.g. 40"
@@ -211,15 +272,25 @@ class RuleEngineScreen:
 
         self.system_score_entry.pack(side="left")
 
-        self.human_score_preview = ctk.CTkLabel(
+        self.human_score_preview = theme.label(
             row,
-            text="Human Score: —",
-            text_color="gray60"
+            "Human Score: —",
+            size=14,
+            color=theme.TEXT_MUTED
         )
 
         self.human_score_preview.pack(
             side="left",
-            padx=(15, 0)
+            padx=(18, 0)
+        )
+
+        self.split_bar = theme.progress_bar(card, 0.0, width=400)
+
+        self.split_bar.pack(
+            anchor="w",
+            fill="x",
+            padx=22,
+            pady=(4, 20)
         )
 
         self.system_score_entry.bind(
@@ -233,86 +304,117 @@ class RuleEngineScreen:
 
         if value.isdigit() and 0 <= int(value) <= 100:
             self.human_score_preview.configure(
-                text=f"Human Score: {100 - int(value)}"
+                text=f"Human Score: {100 - int(value)}",
+                text_color=theme.ACCENT
             )
+            self.split_bar.set(int(value) / 100)
         else:
             self.human_score_preview.configure(
-                text="Human Score: —"
+                text="Human Score: —",
+                text_color=theme.TEXT_MUTED
             )
+            self.split_bar.set(0)
 
-    def create_action_buttons(self):
+    # -----------------------------------------
+    # FOOTER ACTIONS
+    # -----------------------------------------
+
+    def create_footer(self):
+
+        footer = ctk.CTkFrame(self.container, fg_color="transparent")
+
+        footer.pack(
+            side="bottom",
+            fill="x",
+            pady=(10, 0)
+        )
+
+        self.error_label = theme.error_label(footer)
+
+        self.error_label.pack(
+            anchor="w",
+            pady=(0, 6)
+        )
+
+        self.create_action_buttons(footer)
+
+    def create_action_buttons(self, parent):
 
         button_row = ctk.CTkFrame(
-            self.container,
+            parent,
             fg_color="transparent"
         )
 
-        button_row.pack(pady=(10, 0))
+        button_row.pack(fill="x")
 
-        ctk.CTkButton(
+        theme.primary_button(
             button_row,
-            text="Continue",
-            width=150,
-            height=40,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.handle_continue
-        ).pack(
-            side="left",
-            padx=(0, 10)
-        )
-
-        ctk.CTkButton(
-            button_row,
-            text="Skip (Manual Grading Only)",
-            width=220,
-            height=40,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=self.handle_skip
+            "Continue  →",
+            self.handle_continue,
+            width=160,
+            height=42
         ).pack(side="left")
 
+        theme.secondary_button(
+            button_row,
+            "Skip (Manual Grading Only)",
+            self.handle_skip,
+            width=230,
+            height=42
+        ).pack(
+            side="left",
+            padx=(10, 0)
+        )
+
     # -----------------------------------------
-    # SAVED PRESETS (new feature: Rule Engine Presets)
+    # SAVED PRESETS
     # -----------------------------------------
 
     def create_presets_section(self):
 
-        ctk.CTkFrame(
-            self.container,
-            height=2,
-            fg_color="gray30"
-        ).pack(
+        card = theme.card(self.scroll_frame)
+
+        card.pack(
             fill="x",
-            pady=(20, 15)
+            pady=(0, 14),
+            padx=(0, 6)
         )
 
-        ctk.CTkLabel(
-            self.container,
-            text="Saved Presets",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#7CFFB2"
+        theme.label(
+            card,
+            "Saved presets",
+            size=16,
+            weight="bold"
         ).pack(
             anchor="w",
-            pady=(0, 10)
+            padx=22,
+            pady=(18, 10)
         )
 
-        row = ctk.CTkFrame(
-            self.container,
-            fg_color="transparent"
-        )
+        row = ctk.CTkFrame(card, fg_color="transparent")
 
-        row.pack(fill="x")
+        row.pack(
+            fill="x",
+            padx=22,
+            pady=(0, 20)
+        )
 
         preset_names = list(self.presets.keys())
 
         self.preset_menu = ctk.CTkOptionMenu(
             row,
             values=preset_names or ["No saved presets"],
-            width=220
+            width=230,
+            height=36,
+            corner_radius=8,
+            font=theme.font(13),
+            dropdown_font=theme.font(13),
+            fg_color=theme.SURFACE_ALT,
+            button_color=theme.SURFACE_HOVER,
+            button_hover_color=theme.BORDER,
+            dropdown_fg_color=theme.SURFACE_ALT,
+            dropdown_hover_color=theme.SURFACE_HOVER,
+            text_color=theme.TEXT
         )
 
         self.preset_menu.pack(
@@ -323,28 +425,23 @@ class RuleEngineScreen:
         if not preset_names:
             self.preset_menu.configure(state="disabled")
 
-        ctk.CTkButton(
+        theme.secondary_button(
             row,
-            text="Load Selected Preset",
+            "Load Selected Preset",
+            self.handle_load_preset,
             width=170,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            border_width=1,
-            text_color="#7CFFB2",
-            command=self.handle_load_preset
+            height=36
         ).pack(
             side="left",
             padx=(0, 10)
         )
 
-        ctk.CTkButton(
+        theme.secondary_button(
             row,
-            text="Save Preset",
-            width=140,
-            fg_color="#1F8F4C",
-            hover_color="#27AE60",
-            command=self.handle_save_preset
+            "Save Current as Preset",
+            self.handle_save_preset,
+            width=180,
+            height=36
         ).pack(side="left")
 
     def handle_load_preset(self):
@@ -366,15 +463,6 @@ class RuleEngineScreen:
             return
 
         rules_by_factor = {rule.factor: rule for rule in config.rules}
-
-        # Remember each loaded rule's own tolerance (None for presets
-        # saved before tolerance was stored per rule -- those fall
-        # back to the default in build_config()).
-        self.loaded_tolerance = {
-            rule.factor: rule.tolerance_percent
-            for rule in config.rules
-            if rule.tolerance_percent is not None
-        }
 
         for factor, (min_entry, max_entry) in self.factor_entries.items():
 
@@ -422,23 +510,6 @@ class RuleEngineScreen:
     # VALIDATION / SUBMIT
     # -----------------------------------------
 
-    def tolerance_for(self, factor):
-        """
-        The tolerance fraction a Rule built for `factor` should get:
-        the one it was loaded with from a preset, else the Settings
-        default, else None (the Rule Engine's built-in 15%).
-        """
-
-        loaded = self.loaded_tolerance.get(factor)
-
-        if loaded is not None:
-            return loaded
-
-        if self.default_tolerance_percent is not None:
-            return self.default_tolerance_percent / 100
-
-        return None
-
     def build_config(self):
         """
         Validate the on-screen fields and build a RuleEngineConfig
@@ -473,14 +544,7 @@ class RuleEngineScreen:
                 return None, f"{FACTORS[factor]['label']}: values must be numbers."
 
             try:
-                rules.append(
-                    build_rule(
-                        factor,
-                        minimum,
-                        maximum,
-                        tolerance_percent=self.tolerance_for(factor)
-                    )
-                )
+                rules.append(build_rule(factor, minimum, maximum))
             except RuleError as error:
                 return None, str(error)
 
@@ -519,8 +583,8 @@ class RuleEngineScreen:
 
     def handle_skip(self):
         """
-        New feature: Rule Engine Skip. No validation at all -- the
-        professor is choosing to grade entirely manually, so
+        Rule Engine Skip. No validation at all -- the professor is
+        choosing to grade entirely manually, so
         app.py.on_rules_skipped() sets every photo's Teacher max
         score to 100 and leaves Rule Engine grading off.
         """

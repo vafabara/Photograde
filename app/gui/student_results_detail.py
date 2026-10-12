@@ -3,6 +3,8 @@ from pathlib import Path
 
 import customtkinter as ctk
 
+from . import theme
+
 
 def format_score(value):
     """A score for display: "—" if the photo isn't graded, else 84.2 -> "84.2"."""
@@ -15,8 +17,8 @@ def format_score(value):
 
 class StudentResultsDetailScreen:
     """
-    Per-student details opened from the Class Results screen's "ⓘ"
-    button (new feature: Student Details). A read-only view over one
+    Per-student details opened from the Class Results screen's
+    "Details" button. A read-only view over one
     core.class_model.ClassStudentEntry: the student's average and
     photo count, then one card per photo with its Rule Engine /
     Teacher / Total Score and its saved note.
@@ -25,28 +27,16 @@ class StudentResultsDetailScreen:
     ClassPhotoEntry -- notes come from ClassPhotoEntry.note, the same
     field the Photo Note dialog writes -- so there's no second copy
     of any score or note. Takes a parent frame, a student and an
-    on_back callback (App returns to the Class Results screen), the
-    same pattern as StudentDetailScreen.
+    on_back callback (App returns to the Class Results screen).
 
     This is a separate screen from StudentDetailScreen on purpose:
     that one is the Class Screen's DataFrame table (back goes to the
-    Class Screen, no notes), and changing it would change a screen
-    that already works.
+    Class Screen, no notes).
     """
 
     def __init__(self, parent, student, on_back):
 
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        self.container.pack(
-            fill="both",
-            expand=True,
-            padx=40,
-            pady=30
-        )
+        self.container = theme.page(parent)
 
         self.create_header(student, on_back)
         self.create_photo_list(student)
@@ -56,39 +46,6 @@ class StudentResultsDetailScreen:
     # -----------------------------------------
 
     def create_header(self, student, on_back):
-
-        header = ctk.CTkFrame(
-            self.container,
-            fg_color="transparent"
-        )
-
-        header.pack(
-            fill="x",
-            pady=(0, 5)
-        )
-
-        ctk.CTkButton(
-            header,
-            text="← Back to Results",
-            width=150,
-            height=32,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            text_color="#7CFFB2",
-            border_width=1,
-            command=on_back
-        ).pack(
-            side="left",
-            padx=(0, 15)
-        )
-
-        ctk.CTkLabel(
-            header,
-            text=student.name,
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(side="left")
 
         # Same rule as the Class Results table: a Pending student's
         # average is shown as "—", not a partial number.
@@ -101,20 +58,24 @@ class StudentResultsDetailScreen:
 
         status_text = "Completed" if student.is_completed else "Pending"
 
-        ctk.CTkLabel(
+        header = theme.screen_header(
             self.container,
-            text=(
+            student.name,
+            subtitle=(
                 f"Average: {average_text} • "
                 f"{student.photo_count} Photos • "
                 f"{status_text}"
             ),
-            text_color="gray60",
-            font=ctk.CTkFont(size=14),
-            anchor="w"
-        ).pack(
-            fill="x",
-            pady=(0, 15)
+            on_back=on_back,
+            back_text="Back to Results",
+            back_width=160
         )
+
+        theme.pill(
+            header,
+            status_text,
+            theme.SUCCESS if student.is_completed else theme.WARNING
+        ).pack(side="right")
 
     # -----------------------------------------
     # PHOTO CARDS
@@ -127,7 +88,7 @@ class StudentResultsDetailScreen:
         # stays usable.
         photo_list = ctk.CTkScrollableFrame(
             self.container,
-            corner_radius=12
+            fg_color="transparent"
         )
 
         photo_list.pack(
@@ -137,11 +98,11 @@ class StudentResultsDetailScreen:
 
         if not student.photos:
 
-            ctk.CTkLabel(
+            theme.muted(
                 photo_list,
-                text="No photos for this student.",
-                text_color="gray60"
-            ).pack(pady=20)
+                "No photos for this student.",
+                size=14
+            ).pack(pady=30)
 
             return
 
@@ -155,81 +116,95 @@ class StudentResultsDetailScreen:
         the same photo, with the filename alongside it.
         """
 
-        card = ctk.CTkFrame(
-            parent,
-            corner_radius=10
-        )
+        card = theme.card(parent)
 
         card.pack(
             fill="x",
-            padx=5,
+            padx=(0, 6),
             pady=6
         )
 
-        ctk.CTkLabel(
-            card,
-            text=f"Pic {index} — {Path(photo.path).name}",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#7CFFB2",
-            anchor="w"
-        ).pack(
+        title_row = ctk.CTkFrame(card, fg_color="transparent")
+
+        title_row.pack(
             fill="x",
-            padx=15,
-            pady=(12, 4)
+            padx=18,
+            pady=(14, 8)
         )
 
-        scores_row = ctk.CTkFrame(
-            card,
-            fg_color="transparent"
+        theme.label(
+            title_row,
+            f"Pic {index}",
+            size=15,
+            weight="bold",
+            color=theme.ACCENT
+        ).pack(side="left")
+
+        theme.muted(
+            title_row,
+            Path(photo.path).name,
+            size=13
+        ).pack(
+            side="left",
+            padx=(10, 0)
         )
+
+        scores_row = ctk.CTkFrame(card, fg_color="transparent")
 
         scores_row.pack(
             fill="x",
-            padx=15
+            padx=18
         )
 
         scores = [
-            ("Rule Engine Score", photo.rule_engine_score),
-            ("Teacher Score", photo.teacher_score),
-            ("Total Score", photo.total_score),
+            ("Rule Engine Score", photo.rule_engine_score, False),
+            ("Teacher Score", photo.teacher_score, False),
+            ("Total Score", photo.total_score, True),
         ]
 
-        for label, value in scores:
+        for column, (caption, value, highlight) in enumerate(scores):
 
-            ctk.CTkLabel(
+            scores_row.grid_columnconfigure(column, weight=1, uniform="scores")
+
+            theme.stat_tile(
                 scores_row,
-                text=f"{label}: {format_score(value)}",
-                anchor="w"
-            ).pack(
-                side="left",
-                padx=(0, 25)
+                caption,
+                format_score(value),
+                highlight=highlight
+            ).grid(
+                row=0,
+                column=column,
+                sticky="ew",
+                padx=(0 if column == 0 else 8, 0)
             )
 
         note = (photo.note or "").strip()
 
-        ctk.CTkLabel(
+        theme.label(
             card,
-            text="Note",
-            text_color="gray60",
-            font=ctk.CTkFont(size=12),
+            "NOTE",
+            size=11,
+            weight="bold",
+            color=theme.TEXT_FAINT,
             anchor="w"
         ).pack(
             fill="x",
-            padx=15,
-            pady=(8, 0)
+            padx=18,
+            pady=(12, 2)
         )
 
         # wraplength keeps a long note inside the card instead of
         # running off the right edge.
-        ctk.CTkLabel(
+        theme.label(
             card,
-            text=note if note else "No note",
-            text_color="white" if note else "gray60",
-            wraplength=620,
+            note if note else "No note",
+            size=13,
+            color=theme.TEXT if note else theme.TEXT_FAINT,
+            wraplength=640,
             justify="left",
             anchor="w"
         ).pack(
             fill="x",
-            padx=15,
-            pady=(0, 12)
+            padx=18,
+            pady=(0, 16)
         )

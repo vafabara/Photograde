@@ -1,89 +1,43 @@
-from pathlib import Path
-
 import customtkinter as ctk
 import pandas as pd
 
 from ..core.student_dataframe import build_student_dataframe
-from .widgets import show_confirm, show_error
+from . import theme
+
+FIRST_COL_WIDTH = 160
+SCORE_COL_WIDTH = 150
 
 
 class StudentDetailScreen:
     """
-    The Student Detail Screen (spec section 10), now rendering the
-    Student DataFrame (new feature, spec section 6): one row per
-    photo ("Pic 1", "Pic 2", ...) with its Rule Engine / Teacher /
-    Total Score, plus a bold "Average" row. Sourced entirely from
-    `student.photos` (core.class_model.ClassPhotoEntry) -- the same
-    data the Class Screen's Avg Total column reads -- no second
-    scoring system, and no grading is triggered from here.
-
-    New feature: each photo row has a delete button. It asks for
-    confirmation and then calls `on_delete_photo(photo_index)` --
-    App removes that one photo from the class record and persists
-    it; this screen never touches storage (same rule as ClassScreen).
+    The Student Detail Screen: renders the Student DataFrame -- one
+    row per photo ("Pic 1", "Pic 2", ...) with its Rule Engine /
+    Teacher / Total Score, plus a highlighted "Average" row.
+    Sourced entirely from `student.photos`
+    (core.class_model.ClassPhotoEntry) -- the same data the Class
+    Screen's Avg Total column reads -- no second scoring system, and
+    no grading is triggered from here.
     """
 
-    def __init__(self, parent, student, on_back, on_delete_photo=None):
+    def __init__(self, parent, student, on_back):
 
-        self.student = student
-        self.on_delete_photo = on_delete_photo
-
-        self.container = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        self.container.pack(
-            fill="both",
-            expand=True,
-            padx=40,
-            pady=30
-        )
+        self.container = theme.page(parent)
 
         self.create_header(student, on_back)
         self.create_dataframe_table(student)
 
     def create_header(self, student, on_back):
 
-        header = ctk.CTkFrame(
+        theme.screen_header(
             self.container,
-            fg_color="transparent"
+            student.name,
+            subtitle=f"{len(student.photos)} photos • score breakdown",
+            on_back=on_back
         )
-
-        header.pack(
-            fill="x",
-            pady=(0, 20)
-        )
-
-        ctk.CTkButton(
-            header,
-            text="← Back",
-            width=90,
-            height=32,
-            fg_color="transparent",
-            hover_color="#123f2c",
-            border_color="#2ECC71",
-            text_color="#7CFFB2",
-            border_width=1,
-            command=on_back
-        ).pack(
-            side="left",
-            padx=(0, 15)
-        )
-
-        ctk.CTkLabel(
-            header,
-            text=student.name,
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color="#7CFFB2"
-        ).pack(side="left")
 
     def create_dataframe_table(self, student):
 
-        card = ctk.CTkFrame(
-            self.container,
-            corner_radius=12
-        )
+        card = theme.card(self.container)
 
         card.pack(
             fill="both",
@@ -92,18 +46,44 @@ class StudentDetailScreen:
 
         if not student.photos:
 
-            ctk.CTkLabel(
+            theme.label(
                 card,
-                text="No grading data available yet.",
-                font=ctk.CTkFont(size=16),
-                text_color="gray60"
+                "No grading data available yet.",
+                size=15,
+                color=theme.TEXT_MUTED
             ).pack(expand=True)
 
             return
 
         dataframe = build_student_dataframe(student)
 
-        table_frame = ctk.CTkFrame(
+        columns = list(dataframe.columns)
+
+        header_row = ctk.CTkFrame(card, fg_color="transparent")
+
+        header_row.pack(
+            fill="x",
+            padx=28,
+            pady=(18, 4)
+        )
+
+        for col_index, column_name in enumerate(columns):
+
+            theme.label(
+                header_row,
+                column_name.upper(),
+                size=11,
+                weight="bold",
+                color=theme.TEXT_FAINT,
+                width=FIRST_COL_WIDTH if col_index == 0 else SCORE_COL_WIDTH,
+                anchor="w" if col_index == 0 else "e"
+            ).grid(
+                row=0,
+                column=col_index,
+                padx=6
+            )
+
+        table_frame = ctk.CTkScrollableFrame(
             card,
             fg_color="transparent"
         )
@@ -111,103 +91,46 @@ class StudentDetailScreen:
         table_frame.pack(
             fill="both",
             expand=True,
-            padx=20,
-            pady=20
+            padx=14,
+            pady=(0, 14)
         )
-
-        columns = list(dataframe.columns)
-
-        for col_index, column_name in enumerate(columns):
-
-            ctk.CTkLabel(
-                table_frame,
-                text=column_name,
-                font=ctk.CTkFont(size=14, weight="bold"),
-                text_color="#7CFFB2"
-            ).grid(
-                row=0,
-                column=col_index,
-                padx=15,
-                pady=(0, 10),
-                sticky="w"
-            )
 
         last_row_index = len(dataframe) - 1
 
-        for row_index, row in enumerate(dataframe.itertuples(index=False), start=1):
+        for row_index, row in enumerate(dataframe.itertuples(index=False)):
 
-            is_average_row = (row_index - 1) == last_row_index
+            is_average_row = row_index == last_row_index
 
-            row_font = ctk.CTkFont(
-                size=13,
-                weight="bold" if is_average_row else "normal"
+            row_frame = ctk.CTkFrame(
+                table_frame,
+                fg_color=theme.TINTS[theme.ACCENT] if is_average_row else (
+                    theme.SURFACE_ALT if row_index % 2 == 0 else "transparent"
+                ),
+                corner_radius=8
+            )
+
+            row_frame.pack(
+                fill="x",
+                pady=2,
+                padx=(0, 4)
             )
 
             for col_index, value in enumerate(row):
 
-                ctk.CTkLabel(
-                    table_frame,
-                    text=self.format_value(value),
-                    font=row_font,
-                    text_color="#7CFFB2" if is_average_row else "white"
+                theme.label(
+                    row_frame,
+                    self.format_value(value),
+                    size=13,
+                    weight="bold" if is_average_row else "normal",
+                    color=theme.ACCENT if is_average_row else theme.TEXT,
+                    width=FIRST_COL_WIDTH if col_index == 0 else SCORE_COL_WIDTH,
+                    anchor="w" if col_index == 0 else "e"
                 ).grid(
-                    row=row_index,
+                    row=0,
                     column=col_index,
-                    padx=15,
-                    pady=4,
-                    sticky="w"
+                    padx=6,
+                    pady=8
                 )
-
-            # Photo rows only (the Average row isn't a photo). The
-            # DataFrame lists photos in student.photos order, so grid
-            # row N is photo index N - 1.
-            if not is_average_row and self.on_delete_photo:
-
-                ctk.CTkButton(
-                    table_frame,
-                    text="🗑",
-                    width=32,
-                    height=28,
-                    fg_color="transparent",
-                    hover_color="#3a1f1f",
-                    text_color="#FF6B6B",
-                    command=lambda i=row_index - 1: self.handle_delete_photo(i)
-                ).grid(
-                    row=row_index,
-                    column=len(columns),
-                    padx=15,
-                    pady=4,
-                    sticky="w"
-                )
-
-    def handle_delete_photo(self, index):
-        """
-        Confirms, then reports the deletion to App. Only removes the
-        photo from this student's record in PhotoGrade -- the image
-        file on disk is never touched. The last remaining photo
-        can't be removed: a student with no photos can't be graded
-        (the review flow has nothing to show), and there's no way to
-        get a photo-less student into a class today, so the way to
-        drop them entirely is the existing Delete Student action.
-        """
-
-        if len(self.student.photos) <= 1:
-            show_error(
-                self.container,
-                "A student must keep at least one photo. "
-                "To remove them completely, delete the student "
-                "from the class instead."
-            )
-            return
-
-        photo = self.student.photos[index]
-
-        show_confirm(
-            self.container,
-            f'Remove Pic {index + 1} ({Path(photo.path).name}) '
-            f'from this student?\n(The file on disk is not deleted.)',
-            on_yes=lambda: self.on_delete_photo(index)
-        )
 
     def format_value(self, value):
 
@@ -215,6 +138,6 @@ class StudentDetailScreen:
             return value
 
         if pd.isna(value):
-            return "NaN"
+            return "—"
 
         return f"{value:g}"
