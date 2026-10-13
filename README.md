@@ -1,119 +1,58 @@
 # 📷 PhotoGrade
 
-A modular Python desktop application for **technical photography grading** based on image metadata and configurable photography rules.
+**Version 1.0.0 — First Release**
 
-PhotoGrade is a **Smart Photography Grading Assistant** for photography teachers. It manages classes of students, analyzes their photographs using EXIF metadata and a configurable Rule Engine, then combines the automated technical score with the teacher's manual evaluation into a final grade.
+PhotoGrade is a local-first Python desktop app that helps photography teachers evaluate student photos using EXIF metadata and configurable technical rules, then combine automated scores with teacher grading.
 
-## ✨ Features
+## ✨ Key Features
 
-* 🏫 Class Management — create, reopen, and delete persisted classes
-* 👨‍🏫 Student-based photography grading workflow
-* 📁 Add photos per student via folder or individual file selection
-* 🖼️ Multi-image student submissions
-* 📷 EXIF metadata extraction
-* 📊 RGB histogram analysis
-* ⚙️ Configurable Rule Engine with automatic tolerance
-* 💾 Rule Engine Presets — save and reuse a rule configuration across classes
-* 🟢🟡🔴 Technical evaluation using Green / Yellow / Red results
-* 👤 Teacher Grading with configurable System / Human score weighting
-* 🧮 Automatic Total Score calculation
-* 📝 Per-photo notes
-* 📈 Student DataFrame — per-photo score breakdown with pandas
-* 🏁 Class Results screen with per-student completion status
-* 🖱️ Drag & Drop image loading
-* 📋 Copy image and metadata information
-* 📦 JSON / CSV export support
+- **Class & Student Management** — Create and reopen classes, manage students, and add multiple photos from folders or individual files.
+- **Technical Analysis** — Read EXIF metadata, inspect RGB histograms, and evaluate photos with configurable rules and tolerance.
+- **Flexible Grading** — Combine Rule Engine and teacher scores with adjustable weights; add notes to individual photos.
+- **Progress & Search** — Track completion, search classes and students, and save unfinished grading to continue later.
+- **Results & Export** — Review class and per-student results, then export reports to Excel.
+- **Presets & Settings** — Reuse grading rules and configure grading defaults and app preferences.
+- **Drag & Drop** — Load images directly into the app.
+- **Built-in Help** — Find workflow instructions inside the application.
 
 ## 📸 Screenshots
 
-### Home
-
-![PhotoGrade Home](assets/images/home_page.png)
-
-### Class Management
-
-![PhotoGrade Class Management](assets/images/class_manager.png)
-
-### Rule Engine
-
-![PhotoGrade Rule Engine](assets/images/rule_engine.png)
-
-### Grading
-
-![PhotoGrade Grading](assets/images/grading.png)
-
-## 🧠 Python Concepts Used
-
-The project applies practical Python development concepts, including:
-
-* Modular project architecture
-* Object-Oriented Programming
-* Classes and data models
-* Lists, dictionaries, and data processing
-* File and folder handling
-* Exception handling and input validation
-* Unit testing with pytest
-* GUI development with Tkinter / CustomTkinter
-* Image processing with Pillow
-* EXIF processing with piexif
-* Data analysis with pandas
+<table>
+  <tr>
+    <td align="center" width="50%"><strong>Home</strong></td>
+    <td align="center" width="50%"><strong>Class Management</strong></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/images/home_page.png" alt="PhotoGrade Home" width="100%"></td>
+    <td width="50%"><img src="assets/images/class_manager.png" alt="PhotoGrade Class Management" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><strong>Rule Engine</strong></td>
+    <td align="center" width="50%"><strong>Grading Workflow</strong></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/images/rule_engine.png" alt="PhotoGrade Rule Engine" width="100%"></td>
+    <td width="50%"><img src="assets/images/grading.png" alt="PhotoGrade Grading" width="100%"></td>
+  </tr>
+</table>
 
 ## 🏗️ Project Structure
 
 ```text
-Photography-Grading-Assistant/
-│
+Photograde/
+├── .github/workflows/     # Automated test workflow
 ├── app/
-│   ├── core/
-│   │   ├── class_model.py
-│   │   ├── converters.py
-│   │   ├── histogram.py
-│   │   ├── image.py
-│   │   ├── metadata.py
-│   │   ├── rules.py
-│   │   ├── scoring.py
-│   │   ├── student.py
-│   │   ├── student_dataframe.py
-│   │   ├── teacher_scoring.py
-│   │   └── tolerance.py
-│   │
-│   ├── gui/
-│   │   ├── app.py
-│   │   ├── class_screen.py
-│   │   ├── histogram_panel.py
-│   │   ├── home_screen.py
-│   │   ├── image_viewer.py
-│   │   ├── metadata_panel.py
-│   │   ├── results_screen.py
-│   │   ├── rule_engine.py
-│   │   ├── student_detail.py
-│   │   ├── student_setup.py
-│   │   ├── teacher_grading.py
-│   │   └── widgets.py
-│   │
-│   └── storage/
-│       ├── class_storage.py
-│       ├── export.py
-│       └── rule_presets.py
-│
-├── assets/
-│   └── images/
-│
-├── classes/
-├── tests/
-├── main.py
+│   ├── core/              # Metadata, image analysis, rules, scoring, data models
+│   ├── gui/               # Application screens, widgets, help and settings
+│   └── storage/           # Class data, presets, settings, progress and exports
+├── assets/images/         # README screenshots
+├── tests/                 # Automated tests
+├── main.py                # Application entry point
 ├── requirements.txt
-├── rule_presets.json
 └── README.md
 ```
 
-The application is separated into three main layers:
-
-* **`app/core/`** — image processing, metadata, rules, scoring, class/student data models, and DataFrame analysis
-* **`app/gui/`** — graphical interface and application workflow
-* **`app/storage/`** — persistence (classes, rule presets) and export functionality
-
-This separation keeps the core logic independent from the GUI and makes the project easier to test and extend.
+Class data and unfinished grading progress are stored locally in the `classes/` directory during use.
 
 ## ▶️ Run
 
@@ -123,7 +62,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the application:
+Start PhotoGrade:
 
 ```bash
 python main.py
@@ -131,14 +70,8 @@ python main.py
 
 ## 🧪 Tests
 
-Run the test suite:
-
 ```bash
 python -m pytest tests/ -v
 ```
 
-## 🚀 Vision
-
-PhotoGrade is gradually evolving toward a **local-first, privacy-friendly photography grading system** where teachers can manage classes, define technical requirements, automatically evaluate student photographs, and combine the results with their own assessment.
-
-The long-term goal is to extend the system with more advanced student-level statistics, richer grading reports, and optional AI-assisted photography evaluation.
+PhotoGrade uses Python, CustomTkinter, pandas, Pillow, piexif, and pytest.
