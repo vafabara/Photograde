@@ -1,6 +1,6 @@
 # 📷 PhotoGrade
 
-**Version 1.0.0 — First Release**
+**Version 1.1.0**
 
 PhotoGrade is a local-first Python desktop app that helps photography teachers grade student photos. It reads each photo's EXIF metadata, checks it against technical rules the teacher defines, and combines that automatic score with the teacher's own evaluation into a final grade.
 
@@ -149,17 +149,6 @@ The app is split into three layers with one rule between them: **`core/` never i
 - **`storage/`** reads and writes plain JSON and builds the Excel export, with no GUI code.
 
 Scores are calculated once, in `core`, and stored per photo. Every screen (class list, results, details, export) reads those same stored values rather than recalculating them.
-
-## 💾 Where data is stored
-
-Everything is saved locally in a `classes/` folder next to the app (it is git-ignored):
-
-```text
-classes/
-├── <class-id>/class.json          # one folder per class: students, photos, scores, notes
-├── rule_presets.json              # saved Rule Engine presets
-├── settings.json                  # app settings
-└── grading(<class name>).json     # Save & Continue checkpoint (only while grading is unfinished)
 ```
 
 A confirmed score or note is written to `class.json` immediately. The grading checkpoint only remembers *where you stopped*, and only one can exist at a time. Deleting a class from the app removes its `classes/<id>/` folder only; the original photo folders are never touched.
