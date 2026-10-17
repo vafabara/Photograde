@@ -38,6 +38,11 @@ class HomeScreen:
         self.on_settings = on_settings
         self.on_help = on_help
 
+        # Set in create_previous_classes_card (only when there is at
+        # least one class to search).
+        self.search_entry = None
+        self.count_label = None
+
         self.container = theme.page(parent)
 
         self.create_hero()
@@ -158,13 +163,33 @@ class HomeScreen:
         ).pack(side="left")
 
         if self.classes:
-            theme.muted(
+            self.count_label = theme.muted(
                 header,
                 str(len(self.classes)),
                 size=13
-            ).pack(
+            )
+
+            self.count_label.pack(
                 side="left",
                 padx=(10, 0)
+            )
+
+            # Search only filters what is displayed -- self.classes
+            # itself is never changed.
+            self.search_entry = theme.text_entry(
+                card,
+                placeholder_text="Search classes..."
+            )
+
+            self.search_entry.pack(
+                fill="x",
+                padx=22,
+                pady=(0, 10)
+            )
+
+            self.search_entry.bind(
+                "<KeyRelease>",
+                lambda event: self.render_class_rows()
             )
 
         self.previous_classes_frame = ctk.CTkScrollableFrame(
@@ -183,8 +208,65 @@ class HomeScreen:
             self.create_empty_state()
             return
 
-        for class_record in self.classes:
+        self.render_class_rows()
+
+    def render_class_rows(self):
+        """
+        (Re)draws the class rows for the current search text: a
+        case-insensitive, partial match on the class name. An empty
+        search matches everything, so clearing the field restores the
+        full list. Only the displayed rows change -- self.classes and
+        storage are never touched.
+        """
+
+        for widget in self.previous_classes_frame.winfo_children():
+            widget.destroy()
+
+        query = self.search_entry.get().strip()
+
+        matches = [
+            class_record
+            for class_record in self.classes
+            if query.casefold() in class_record.class_name.casefold()
+        ]
+
+        if query:
+            self.count_label.configure(
+                text=f"{len(matches)} of {len(self.classes)}"
+            )
+        else:
+            self.count_label.configure(text=str(len(self.classes)))
+
+        if not matches:
+            self.create_no_results_state(query)
+            return
+
+        for class_record in matches:
             self.create_previous_class_row(class_record)
+
+    def create_no_results_state(self, query):
+
+        empty = ctk.CTkFrame(
+            self.previous_classes_frame,
+            fg_color="transparent"
+        )
+
+        empty.pack(pady=40)
+
+        theme.label(
+            empty,
+            "No classes found",
+            size=16,
+            weight="bold"
+        ).pack()
+
+        theme.muted(
+            empty,
+            f"No class name matches “{query}”. Try a different search.",
+            size=13,
+            wraplength=360,
+            justify="center"
+        ).pack(pady=(4, 0))
 
     def create_empty_state(self):
 

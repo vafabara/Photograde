@@ -50,6 +50,9 @@ class ClassScreen:
         self.on_delete_student = on_delete_student
         self.on_start_grading = on_start_grading
 
+        # Set in create_student_list (only when the class has students).
+        self.search_entry = None
+
         self.container = theme.page(parent)
 
         self.create_header()
@@ -124,12 +127,30 @@ class ClassScreen:
 
             return
 
+        # Search only filters what is displayed -- the students in
+        # class_record are never changed.
+        self.search_entry = theme.text_entry(
+            card,
+            placeholder_text="Search students..."
+        )
+
+        self.search_entry.pack(
+            fill="x",
+            padx=28,
+            pady=(16, 0)
+        )
+
+        self.search_entry.bind(
+            "<KeyRelease>",
+            lambda event: self.render_student_rows()
+        )
+
         header_row = ctk.CTkFrame(card, fg_color="transparent")
 
         header_row.pack(
             fill="x",
             padx=28,
-            pady=(16, 4)
+            pady=(12, 4)
         )
 
         self.configure_columns(header_row)
@@ -163,8 +184,63 @@ class ClassScreen:
             pady=(0, 14)
         )
 
+        self.render_student_rows()
+
+    def render_student_rows(self):
+        """
+        (Re)draws the student rows for the current search text: a
+        case-insensitive, partial match on the student's name. An
+        empty search matches everything, so clearing the field
+        restores the full list.
+
+        Each row keeps the student's real position in
+        class_record.students (enumerate runs over the full list
+        *before* filtering), because Start Grading / Add Photos /
+        Remove / open-student all act on that index. Only the
+        displayed rows change -- no student data is touched.
+        """
+
+        for widget in self.student_list_frame.winfo_children():
+            widget.destroy()
+
+        query = self.search_entry.get().strip()
+
+        shown = 0
+
         for index, student in enumerate(self.class_record.students):
+
+            if query.casefold() not in student.name.casefold():
+                continue
+
             self.create_student_row(index, student)
+            shown += 1
+
+        if shown == 0:
+            self.create_no_results_state(query)
+
+    def create_no_results_state(self, query):
+
+        empty = ctk.CTkFrame(
+            self.student_list_frame,
+            fg_color="transparent"
+        )
+
+        empty.pack(pady=40)
+
+        theme.label(
+            empty,
+            "No students found",
+            size=16,
+            weight="bold"
+        ).pack()
+
+        theme.muted(
+            empty,
+            f"No student name matches “{query}”. Try a different search.",
+            size=13,
+            wraplength=360,
+            justify="center"
+        ).pack(pady=(4, 0))
 
     def create_student_row(self, index, student):
 
