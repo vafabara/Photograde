@@ -20,12 +20,23 @@ class HomeScreen:
         `on_delete_class(class_id)` if the professor picks Yes
     """
 
-    def __init__(self, parent, classes, on_continue, on_open_class, on_delete_class):
+    def __init__(
+        self,
+        parent,
+        classes,
+        on_continue,
+        on_open_class,
+        on_delete_class,
+        on_settings=None,
+        on_help=None
+    ):
 
         self.classes = classes
         self.on_continue = on_continue
         self.on_open_class = on_open_class
         self.on_delete_class = on_delete_class
+        self.on_settings = on_settings
+        self.on_help = on_help
 
         self.container = theme.page(parent)
 
@@ -66,14 +77,41 @@ class HomeScreen:
             pady=(0, 22)
         )
 
+        title_row = ctk.CTkFrame(hero, fg_color="transparent")
+
+        title_row.pack(fill="x")
+
         theme.label(
-            hero,
+            title_row,
             "PhotoGrade",
             size=32,
             weight="bold",
             color=theme.ACCENT,
             anchor="w"
-        ).pack(anchor="w")
+        ).pack(side="left")
+
+        # Settings is packed first so it ends up rightmost; Help sits
+        # just to its left.
+        if self.on_settings:
+            theme.secondary_button(
+                title_row,
+                "Settings",
+                self.on_settings,
+                width=100,
+                height=34
+            ).pack(side="right")
+
+        if self.on_help:
+            theme.secondary_button(
+                title_row,
+                "How to Use",
+                self.on_help,
+                width=110,
+                height=34
+            ).pack(
+                side="right",
+                padx=(0, 10)
+            )
 
         theme.muted(
             hero,

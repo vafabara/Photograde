@@ -21,14 +21,21 @@ from ..core.class_model import (
 )
 from ..storage.class_storage import save_class, load_all_classes, load_class, delete_class
 from ..storage.rule_presets import load_presets, save_preset
+from ..storage.settings_storage import (
+    SettingsStorageError,
+    load_settings,
+    save_settings,
+)
 
 from . import theme
 from .class_screen import ClassScreen
+from .help import HelpScreen
 from .home_screen import HomeScreen
 from .image_viewer import ImageViewer
 from .metadata_panel import MetadataPanel
 from .results_screen import ClassResultsScreen
 from .rule_engine import RuleEngineScreen
+from .settings_screen import SettingsScreen
 from .student_detail import StudentDetailScreen
 from .student_results_detail import StudentResultsDetailScreen
 from .student_setup import StudentFoldersScreen
@@ -141,7 +148,53 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             classes=classes,
             on_continue=self.on_home_continue,
             on_open_class=self.on_open_class,
-            on_delete_class=self.on_delete_class
+            on_delete_class=self.on_delete_class,
+            on_settings=self.show_settings_screen,
+            on_help=self.show_help_screen
+        )
+
+    def show_settings_screen(self):
+        """
+        Settings page, opened from the Home Screen. Settings are
+        loaded fresh from storage each time it opens; Back returns to
+        Home through show_setup_count_screen like every other screen.
+        """
+
+        self.clear_main_frame()
+
+        SettingsScreen(
+            self.main_frame,
+            settings=load_settings(),
+            on_save=self.on_save_settings,
+            on_back=self.show_setup_count_screen
+        )
+
+    def on_save_settings(self, settings):
+        """
+        Called by SettingsScreen with fully validated AppSettings.
+        Persists them; returns False (after showing the error) if
+        saving failed, so the screen doesn't report success.
+        """
+
+        try:
+            save_settings(settings)
+        except SettingsStorageError as error:
+            show_error(self, str(error))
+            return False
+
+        return True
+
+    def show_help_screen(self):
+        """
+        How to Use page, opened from the Home Screen. Static content;
+        Back returns to Home through show_setup_count_screen.
+        """
+
+        self.clear_main_frame()
+
+        HelpScreen(
+            self.main_frame,
+            on_back=self.show_setup_count_screen
         )
 
     def on_home_continue(self, class_name, student_count):
