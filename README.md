@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="assets/images/banner.png" width="100%" alt="PhotoGrade — Photography Grading Assistant">
+</p>
+
+<p align="center">
+  <strong>Turn photo metadata into consistent, transparent, teacher-guided grades.</strong>
+</p>
+
 # 📷 PhotoGrade
 
 **Version 1.1.0**
@@ -5,6 +13,19 @@
 PhotoGrade is a local-first Python desktop app that helps photography teachers grade student photos. It reads each photo's EXIF metadata, checks it against technical rules the teacher defines, and combines that automatic score with the teacher's own evaluation into a final grade.
 
 Everything runs on your machine: no accounts, no cloud, no database. Classes, notes and scores are stored as plain JSON files.
+
+## 📸 Screenshots
+
+<div align="center">
+  <p>
+    <img src="assets/images/home_page.png" alt="PhotoGrade Home" width="48%">
+    <img src="assets/images/class_manager.png" alt="PhotoGrade Class Management" width="48%">
+  </p>
+  <p>
+    <img src="assets/images/rule_engine.png" alt="PhotoGrade Rule Engine" width="48%">
+    <img src="assets/images/grading.png" alt="PhotoGrade Grading Workflow" width="48%">
+  </p>
+</div>
 
 ## ✨ Features
 
@@ -63,14 +84,6 @@ Tolerance is proportional to each rule's own range: an ISO range of 200–600 an
 6. Reopen the class any time from **Previous classes** to add students or photos, or to grade a single student.
 
 Photo limits per student: up to **20 images** and **100 MB** in total. Supported formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`, `.tiff`.
-
-## 📸 Screenshots
-
-| **Home** | **Class Management** |
-| --- | --- |
-| ![PhotoGrade Home](assets/images/home_page.png) | ![PhotoGrade Class Management](assets/images/class_manager.png) |
-| **Rule Engine** | **Grading Workflow** |
-| ![PhotoGrade Rule Engine](assets/images/rule_engine.png) | ![PhotoGrade Grading](assets/images/grading.png) |
 
 ## ▶️ Getting started
 
@@ -149,7 +162,6 @@ The app is split into three layers with one rule between them: **`core/` never i
 - **`storage/`** reads and writes plain JSON and builds the Excel export, with no GUI code.
 
 Scores are calculated once, in `core`, and stored per photo. Every screen (class list, results, details, export) reads those same stored values rather than recalculating them.
-```
 
 A confirmed score or note is written to `class.json` immediately. The grading checkpoint only remembers *where you stopped*, and only one can exist at a time. Deleting a class from the app removes its `classes/<id>/` folder only; the original photo folders are never touched.
 
