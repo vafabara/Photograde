@@ -28,32 +28,9 @@ Everything runs on your machine: no accounts, no cloud, no database. Classes, no
 </div>
 
 ## ✨ Features
-
-### Classes and students
-- **Class management** — create, reopen and delete classes. Deleting a class removes only its saved data, never the students' photo files.
-- **Students and photos** — add students, then give each one photos by selecting a folder or individual files. Photos can be added to an existing student later.
-- **Search** — filter classes on the Home screen and students on the Class screen by name while you type (case-insensitive, partial match). Searching only changes what is displayed; it never modifies any data.
-- **Progress at a glance** — every class and student shows how many photos or students are already graded.
-
-### Technical grading (Rule Engine)
-- **Configurable rules** — set a valid Minimum/Maximum range for ISO, Aperture, Shutter Speed and Focal Length. Leave a factor blank to skip it.
-- **Automatic tolerance** — values slightly outside a range are not a hard failure. A configurable percentage of the range width (15% by default) forms a tolerance zone.
-- **Green / Yellow / Red** — each factor is colored by its result in the metadata panel while you grade.
-- **Presets** — save a rule configuration under a name and load it into any class later.
-- **Skip option** — grade fully manually; the teacher then controls all 100 points.
-
-### Teacher grading and results
-- **Adjustable weighting** — you choose the System/Teacher split (for example 40/60 or 70/30). Nothing is hard-coded.
-- **Automatic Total Score** — Rule Engine score + Teacher score, per photo.
-- **Photo notes** — attach a note to any photo.
-- **Image inspection** — preview, RGB histogram, full EXIF panel, drag & drop loading and a "Copy Info" button.
-- **Class Results** — class average, completed/pending counts, and a per-student detail view with every photo's scores and note.
-- **Excel export** — export results to `.xlsx`: one *Class Results* sheet plus one sheet per student (scores and notes).
-
-### Workflow helpers
-- **Save & Continue** — save your place during grading and resume later from the Home screen.
-- **Settings** — default System/Teacher weights, default tolerance, delete confirmations and EXIF display. Settings are defaults only and never change existing classes.
-- **Built-in help** — a "How to Use" screen explains the whole workflow inside the app.
+<p align="center">
+  <img src="assets/images/futures.png" width="100%" alt="PhotoGrade — Photography Grading Assistant">
+</p>
 
 ## 🧮 How grading works
 
