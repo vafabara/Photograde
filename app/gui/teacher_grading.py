@@ -1,5 +1,7 @@
 import customtkinter as ctk
 
+from ..core.rules import FACTORS
+from ..core.scoring import MISSING
 from ..core.teacher_scoring import (
     validate_teacher_score,
     compute_total_score,
@@ -41,8 +43,11 @@ class TeacherGradingPanel:
             pady=(0, 14)
         )
 
+        self.create_exif_warning()
+
         # Rule Engine (automatic) score
         engine_row = ctk.CTkFrame(self.frame, fg_color="transparent")
+        self.engine_row = engine_row
 
         engine_row.pack(
             fill="x",
@@ -105,6 +110,81 @@ class TeacherGradingPanel:
         )
 
         self.total_label.pack(side="right")
+
+    def create_exif_warning(self):
+        """
+        Banner shown only while Rule Engine grading is skipped for the
+        photo on screen because required EXIF data is missing. Built
+        here but not packed -- update_exif_warning() shows/hides it.
+        """
+
+        self.exif_warning = ctk.CTkFrame(
+            self.frame,
+            fg_color=theme.TINTS[theme.WARNING],
+            corner_radius=8
+        )
+
+        theme.label(
+            self.exif_warning,
+            "⚠  EXIF data missing",
+            size=12,
+            weight="bold",
+            color=theme.WARNING,
+            anchor="w"
+        ).pack(
+            anchor="w",
+            padx=10,
+            pady=(8, 2)
+        )
+
+        self.exif_warning_text = theme.label(
+            self.exif_warning,
+            "",
+            size=12,
+            color=theme.TEXT,
+            anchor="w",
+            justify="left",
+            wraplength=250
+        )
+
+        self.exif_warning_text.pack(
+            anchor="w",
+            padx=10,
+            pady=(0, 8)
+        )
+
+    def update_exif_warning(self, image_record):
+        """
+        Derived from this photo's own grading_result on every update(),
+        so a previous photo's warning can never show on another photo.
+        """
+
+        grading = image_record.grading_result
+
+        if grading is None or not grading.exif_missing:
+            self.exif_warning.pack_forget()
+            return
+
+        missing = ", ".join(
+            FACTORS[result.factor]["label"]
+            for result in grading.rule_results
+            if result.status == MISSING
+        )
+
+        self.exif_warning_text.configure(
+            text=(
+                "This photo is missing required EXIF metadata "
+                f"(or has none): {missing}.\n"
+                "Rule Engine grading was skipped. Please review the "
+                "photo and assign its score out of 100."
+            )
+        )
+
+        self.exif_warning.pack(
+            fill="x",
+            pady=(0, 10),
+            before=self.engine_row
+        )
 
     def create_teacher_row(self):
 
@@ -172,7 +252,14 @@ class TeacherGradingPanel:
         self.image_record = image_record
         self.error_label.configure(text="")
 
-        if image_record.rule_engine_score is None:
+        grading = image_record.grading_result
+
+        if grading is not None and grading.exif_missing:
+            self.rule_engine_label.configure(
+                text="Skipped (EXIF missing)",
+                text_color=theme.WARNING
+            )
+        elif image_record.rule_engine_score is None:
             self.rule_engine_label.configure(
                 text="— (no rules configured)",
                 text_color=theme.TEXT_MUTED
@@ -185,6 +272,8 @@ class TeacherGradingPanel:
                 ),
                 text_color=theme.TEXT
             )
+
+        self.update_exif_warning(image_record)
 
         teacher_max = image_record.teacher_max_score
 

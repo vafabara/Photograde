@@ -884,15 +884,20 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             pady=16
         )
 
+        # The metadata panel is packed BEFORE the image viewer on
+        # purpose: pack gives space to widgets in creation order, and
+        # the viewer's photo is sized to fill all remaining width, so
+        # if the viewer came first it squeezed the panel (clipped
+        # text) on large/full-screen windows.
+        self.metadata_panel = MetadataPanel(
+            self.content,
+            on_teacher_confirm=self.on_teacher_confirm
+        )
+
         self.image_viewer = ImageViewer(
             self.content,
             on_drop=self.on_drop,
             on_note_save=self.on_note_save
-        )
-
-        self.metadata_panel = MetadataPanel(
-            self.content,
-            on_teacher_confirm=self.on_teacher_confirm
         )
 
     # -----------------------------------------
@@ -1081,12 +1086,19 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
             image_record.grading_result = grading
 
-            if grading is not None:
-                image_record.rule_engine_score = grading.technical_score
-                image_record.rule_engine_max_score = grading.system_score
+            if grading is not None and grading.exif_missing:
+                # Required EXIF is missing: no Rule Engine score (None,
+                # never 0) and the teacher scores the photo out of 100.
+                image_record.rule_engine_score = None
+                image_record.rule_engine_max_score = None
+                image_record.teacher_max_score = 100
+            else:
+                if grading is not None:
+                    image_record.rule_engine_score = grading.technical_score
+                    image_record.rule_engine_max_score = grading.system_score
 
-            if self.rule_config is not None:
-                image_record.teacher_max_score = self.rule_config.human_score
+                if self.rule_config is not None:
+                    image_record.teacher_max_score = self.rule_config.human_score
 
             self.image_viewer.update(
                 self.current_image,
