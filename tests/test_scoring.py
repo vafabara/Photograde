@@ -261,13 +261,45 @@ class TestGradeStudent:
 
         assert result.technical_score == 50.0
 
-    def test_missing_metadata_gives_no_deduction(self):
+    def test_missing_metadata_gives_no_technical_score(self):
 
         rules = [Rule("iso", 100, 400)]
         metadata = {"iso": None}
 
         result = grade_student(metadata, rules, 100)
 
+        # A configured factor with no EXIF data can't be graded, so the
+        # Rule Engine produces no score at all (the caller hands the
+        # photo's full 100 points to Teacher Grading instead).
+        assert result.technical_score is None
+        assert result.exif_missing is True
+
+        # The rule itself is still reported as MISSING, with no
+        # deduction of its own.
+        assert result.rule_results[0].status == MISSING
+        assert result.rule_results[0].deduction == 0.0
+
+    def test_one_missing_rule_invalidates_the_whole_score(self):
+
+        rules = [Rule("iso", 100, 400), Rule("aperture", 2, 8)]
+        metadata = {"iso": 200, "fnum": None}  # iso GREEN, aperture MISSING
+
+        result = grade_student(metadata, rules, 100)
+
+        # No partial score, even though the other rule was fine.
+        assert result.technical_score is None
+        assert result.exif_missing is True
+
+        statuses = {r.factor: r.status for r in result.rule_results}
+        assert statuses == {"iso": GREEN, "aperture": MISSING}
+
+    def test_complete_metadata_does_not_flag_exif_missing(self):
+
+        rules = [Rule("iso", 100, 400)]
+
+        result = grade_student({"iso": 200}, rules, 100)
+
+        assert result.exif_missing is False
         assert result.technical_score == 100.0
 
     def test_no_rules_configured_returns_the_full_system_score_untouched(self):
