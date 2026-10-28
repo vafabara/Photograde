@@ -116,12 +116,17 @@ def show_info(parent, title, message):
     _message_dialog(parent, title, message, theme.ACCENT)
 
 
-def show_confirm(parent, message, on_yes):
+def show_confirm(parent, message, on_yes, on_no=None):
     """
     Modal Yes/No confirmation (used for Delete Class / Delete
     Student). Calls `on_yes()` only if the user picks Yes -- picking
     No, pressing Escape or closing the dialog does nothing. Yes is
     drawn in the danger colour because every use is destructive.
+
+    `on_no` is optional (Unsaved Exit Warning). When given, it is
+    called if the user picks No -- needed when "No" means "leave
+    anyway" rather than "cancel". Escape / closing the dialog never
+    calls either callback.
     """
 
     window = create_modal(parent, "Confirm", 420, 210, accent=theme.DANGER)
@@ -151,6 +156,12 @@ def show_confirm(parent, message, on_yes):
         window.destroy()
         on_yes()
 
+    def handle_no():
+        window.destroy()
+
+        if on_no:
+            on_no()
+
     row = ctk.CTkFrame(window, fg_color="transparent")
 
     row.pack()
@@ -174,7 +185,7 @@ def show_confirm(parent, message, on_yes):
     theme.secondary_button(
         row,
         "No",
-        window.destroy,
+        handle_no,
         width=100,
         height=36
     ).pack(

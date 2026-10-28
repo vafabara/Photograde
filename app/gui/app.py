@@ -20,6 +20,13 @@ from ..core.class_model import (
     ClassPhotoEntry,
 )
 from ..storage.class_storage import save_class, load_all_classes, load_class, delete_class
+from ..storage.grading_session import (
+    GradingSessionError,
+    delete_session,
+    find_conflict,
+    load_active_session,
+    save_session,
+)
 from ..storage.rule_presets import load_presets, save_preset
 from ..storage.settings_storage import (
     SettingsStorageError,
@@ -39,7 +46,7 @@ from .settings_screen import SettingsScreen
 from .student_detail import StudentDetailScreen
 from .student_results_detail import StudentResultsDetailScreen
 from .student_setup import StudentFoldersScreen
-from .widgets import show_error
+from .widgets import show_confirm, show_error
 
 
 class App(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -54,6 +61,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.title("PhotoGrade")
         self.geometry("1180x760")
         self.minsize(980, 640)
+
+        # Closing the window goes through the unsaved-progress check.
+        self.protocol("WM_DELETE_WINDOW", self.exit_app)
 
         self.configure(fg_color=theme.BG)
 
@@ -83,6 +93,15 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         # Rule Engine
         self.rule_config = None
 
+        # Grading Progress (Save & Continue):
+        #   grading_student_name -- which queue is being graded: None
+        #     for the whole class, or one student's name.
+        #   grading_dirty -- something changed since the last Save.
+        #   in_grading -- True only while the grading screen shows.
+        self.grading_student_name = None
+        self.grading_dirty = False
+        self.in_grading = False
+
         # Main frame
         self.main_frame = ctk.CTkFrame(
             self,
@@ -102,6 +121,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     # -----------------------------------------
 
     def clear_main_frame(self):
+
+        # Whatever replaces the grading screen, grading is over.
+        self.in_grading = False
 
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -142,6 +164,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.clear_main_frame()
 
         classes = load_all_classes()
+        active_session = load_active_session()
 
         HomeScreen(
             self.main_frame,
@@ -150,7 +173,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             on_open_class=self.on_open_class,
             on_delete_class=self.on_delete_class,
             on_settings=self.show_settings_screen,
-            on_help=self.show_help_screen
+            on_help=self.show_help_screen,
+            active_session=active_session,
+            on_continue_grading=self.on_continue_grading
         )
 
     def show_settings_screen(self):
@@ -443,7 +468,16 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         asking the professor to reconfigure from scratch.
         """
 
+        if self.class_record is not None and self.session_conflicts(
+            self.class_record.class_id, None
+        ):
+            # The class itself is already saved; the professor can
+            # grade it later from Home.
+            self.show_setup_count_screen()
+            return
+
         self.rule_config = config
+        self.grading_student_name = None
 
         for image_record in self.image_records:
             image_record.rule_engine_max_score = config.system_score
@@ -470,7 +504,16 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         re-ask for.
         """
 
+        if self.class_record is not None and self.session_conflicts(
+            self.class_record.class_id, None
+        ):
+            # The class itself is already saved; the professor can
+            # grade it later from Home.
+            self.show_setup_count_screen()
+            return
+
         self.rule_config = None
+        self.grading_student_name = None
 
         for image_record in self.image_records:
             image_record.teacher_max_score = 100
@@ -560,6 +603,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         saved before rule_config existed.
         """
 
+        student_name = class_record.students[student_index].name
+
+        # Only one unfinished grading session may exist at a time.
+        if self.session_conflicts(class_record.class_id, student_name):
+            return
+
         self.class_record = class_record
 
         rule_config_data = class_record.rule_config
@@ -607,6 +656,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.rule_config = config
         self.image_records = image_records
+        self.grading_student_name = student_entry.name
 
         self.start_review()
 
@@ -630,6 +680,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.rule_config = None
         self.image_records = image_records
+        self.grading_student_name = student_entry.name
 
         self.start_review()
 
@@ -703,14 +754,335 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.open_class_screen(class_record.class_id)
 
     # -----------------------------------------
+    # GRADING SESSION — SAVE & CONTINUE
+    #
+    # The checkpoint file (storage.grading_session) only remembers
+    # *where the teacher stopped*. The scores and notes themselves
+    # already live in class.json (on_teacher_confirm / on_note_save
+    # save them as they happen), so this is a checkpoint on top of
+    # the existing class storage, not a second storage system.
+    # -----------------------------------------
+
+    def session_conflicts(self, class_id, student_name):
+        """
+        True (after showing an error) if an unfinished saved grading
+        session already exists for a different class, or for a
+        different queue in this class (another student, or the whole
+        class). `student_name` is None for a whole-class queue.
+        """
+
+        message = find_conflict(class_id, student_name)
+
+        if message:
+            show_error(self, message)
+            return True
+
+        return False
+
+    def remove_session(self, class_id):
+        """
+        Deletes the saved grading session of `class_id` (if any).
+        A failure is shown to the teacher instead of crashing.
+        """
+
+        try:
+            delete_session(class_id)
+        except GradingSessionError as error:
+            show_error(self, str(error))
+
+    def drop_unusable_session(self, class_id, message):
+        """
+        A saved session that can no longer be applied (the class is
+        gone, or its photos changed) would otherwise sit there
+        forever and block every other class. So it is removed, the
+        teacher is told why, and Home is shown again. Nothing real is
+        lost: every confirmed score and note is still in class.json.
+        """
+
+        self.remove_session(class_id)
+
+        show_error(
+            self,
+            message + " The saved progress was removed; scores you "
+            "already confirmed are still in the class."
+        )
+
+        self.show_setup_count_screen()
+
+    def queue_students(self, class_record, student_name):
+        """
+        The ClassStudentEntry objects that make up a review queue:
+        every student for a whole-class queue (student_name None),
+        or just the one student with that name. None if no such
+        student exists any more.
+        """
+
+        if student_name is None:
+            return list(class_record.students)
+
+        for student in class_record.students:
+            if student.name == student_name:
+                return [student]
+
+        return None
+
+    def build_session_data(self):
+        """
+        The dict written to classes/grading(<class name>).json: which
+        class and queue, the photo the teacher is on, the Rule Engine
+        configuration, and a snapshot of every queued photo's
+        confirmed scores and note. The photos come from the
+        ClassPhotoEntry objects (the same data class.json holds), in
+        review-queue order.
+        """
+
+        class_record = self.class_record
+
+        students = self.queue_students(class_record, self.grading_student_name)
+
+        return {
+            "class_id": class_record.class_id,
+            "class_name": class_record.class_name,
+            "student_name": self.grading_student_name,
+            "current_index": self.current_image_index,
+            "rule_config": class_record.rule_config,
+            "photos": [
+                photo.to_dict()
+                for student in students
+                for photo in student.photos
+            ],
+        }
+
+    def all_photos_graded(self):
+        """True once every photo in the review queue has a Total Score."""
+
+        return bool(self.image_records) and all(
+            image_record.total_score is not None
+            for image_record in self.image_records
+        )
+
+    def finish_session_if_complete(self):
+        """
+        When every photo in the queue is graded, the grading session
+        is finished: delete its checkpoint file (the class data in
+        class.json stays untouched). Returns True if it was complete.
+        """
+
+        if not self.all_photos_graded():
+            return False
+
+        self.remove_session(self.class_record.class_id)
+        self.grading_dirty = False
+        self.set_save_status("", theme.TEXT_MUTED)
+
+        return True
+
+    def save_grading_progress(self):
+        """
+        The Save button (also used by the unsaved-exit dialog).
+        Returns True if the progress was saved -- or if there was
+        nothing left to save because grading is already complete --
+        and False if saving failed or was blocked.
+        """
+
+        if self.class_record is None:
+            return False
+
+        # A fully graded queue has nothing to resume. Writing a
+        # checkpoint for it would only leave a stale file that blocks
+        # every other class.
+        if self.finish_session_if_complete():
+            return True
+
+        try:
+            save_session(self.build_session_data())
+        except GradingSessionError as error:
+            show_error(self, str(error))
+            return False
+
+        self.grading_dirty = False
+        self.set_save_status("✓ Saved", theme.SUCCESS)
+
+        return True
+
+    def mark_dirty(self):
+        """
+        Something changed since the last Save. Ignored once the whole
+        queue is graded, because a finished session has nothing to
+        checkpoint.
+        """
+
+        if self.all_photos_graded():
+            return
+
+        self.grading_dirty = True
+        self.set_save_status("Unsaved changes", theme.WARNING)
+
+    def leave_grading(self, proceed):
+        """
+        Runs `proceed()` to leave the grading screen -- but first, if
+        there are unsaved changes, asks whether to save:
+
+          Yes -> save, then leave (stays put if the save fails)
+          No  -> leave without saving the latest changes
+          X   -> closes the dialog and stays on the grading screen
+        """
+
+        if not (self.in_grading and self.grading_dirty):
+            proceed()
+            return
+
+        def save_then_leave():
+            if self.save_grading_progress():
+                proceed()
+
+        show_confirm(
+            self,
+            "You have unsaved grading progress. "
+            "Do you want to save before leaving?",
+            on_yes=save_then_leave,
+            on_no=proceed
+        )
+
+    def exit_app(self):
+        """Exit button / window X button: close the app, with the unsaved check."""
+
+        self.leave_grading(self.destroy)
+
+    def on_continue_grading(self):
+        """
+        Called by HomeScreen's "Continue (ClassName) Grading" button.
+        Loads the saved session and the class it belongs to, then
+        hands both to resume_grading().
+        """
+
+        session = load_active_session()
+
+        if session is None:
+            show_error(self, "No saved grading session was found.")
+            self.show_setup_count_screen()
+            return
+
+        class_record = load_class(session["class_id"])
+
+        if class_record is None:
+            self.drop_unusable_session(
+                session["class_id"],
+                "The class for this saved grading session no longer exists."
+            )
+            return
+
+        self.resume_grading(class_record, session)
+
+    def resume_grading(self, class_record, session):
+        """
+        Rebuilds the review queue exactly as it was when the teacher
+        pressed Save, restores every photo's saved scores and note,
+        and opens the grading screen on the photo they stopped at.
+
+        The saved photo list must match the class's current photos
+        (same paths, same order). If photos were added or removed
+        since the save, the session can't be applied safely -- it is
+        dropped (see drop_unusable_session) instead of risking
+        putting scores on the wrong photos.
+        """
+
+        student_name = session.get("student_name")
+        students = self.queue_students(class_record, student_name)
+
+        entries = (
+            [photo for student in students for photo in student.photos]
+            if students is not None
+            else []
+        )
+
+        saved_photos = session["photos"]
+
+        if not entries or [entry.path for entry in entries] != [
+            saved.get("path") for saved in saved_photos
+        ]:
+            self.drop_unusable_session(
+                class_record.class_id,
+                "The photos in this class changed after the grading "
+                "progress was saved, so it can't be resumed."
+            )
+            return
+
+        config_data = session.get("rule_config") or class_record.rule_config
+
+        if config_data is None:
+            self.drop_unusable_session(
+                class_record.class_id,
+                "The saved grading progress has no Rule Engine settings."
+            )
+            return
+
+        # Restore the saved scores and notes onto the class's photos.
+        for entry, saved in zip(entries, saved_photos):
+
+            restored = ClassPhotoEntry.from_dict(saved)
+
+            entry.rule_engine_score = restored.rule_engine_score
+            entry.teacher_score = restored.teacher_score
+            entry.total_score = restored.total_score
+            entry.note = restored.note
+
+        class_record.rule_config = config_data
+        save_class(class_record)
+
+        # Rebuild the runtime queue from the restored entries.
+        image_records = [
+            image_record
+            for student in students
+            for image_record in image_records_from_student(student)
+        ]
+
+        if config_data.get("skipped"):
+
+            self.rule_config = None
+
+            for image_record in image_records:
+                image_record.teacher_max_score = 100
+
+        else:
+
+            config = RuleEngineConfig.from_dict(config_data)
+            self.rule_config = config
+
+            for image_record in image_records:
+                image_record.rule_engine_max_score = config.system_score
+                image_record.teacher_max_score = config.human_score
+
+        self.class_record = class_record
+        self.image_records = image_records
+        self.grading_student_name = student_name
+
+        # Land on the exact photo the teacher stopped at.
+        start_index = max(
+            0,
+            min(int(session["current_index"]), len(image_records) - 1)
+        )
+
+        self.start_review(start_index=start_index)
+
+    # -----------------------------------------
     # REVIEW
     # -----------------------------------------
 
-    def start_review(self):
+    def start_review(self, start_index=0):
+        """
+        Opens the grading screen. `start_index` is 0 for a normal
+        start (and for the Results screen's Review button, which
+        calls this with no arguments); Continue passes the saved
+        position instead.
+        """
 
-        self.current_image_index = 0
+        self.current_image_index = start_index
+        self.grading_dirty = False
 
         self.clear_main_frame()
+
+        self.in_grading = True
 
         self.create_student_bar()
         self.create_bottom_bar()
@@ -781,6 +1153,35 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             pady=(6, 0)
         )
 
+        # Save & Continue: packed after `right`, so it sits just to
+        # its left.
+        save_box = ctk.CTkFrame(inner, fg_color="transparent")
+
+        save_box.pack(
+            side="right",
+            padx=(0, 24)
+        )
+
+        self.save_status_label = theme.label(
+            save_box,
+            "",
+            size=12,
+            color=theme.TEXT_MUTED
+        )
+
+        self.save_status_label.pack(
+            side="left",
+            padx=(0, 10)
+        )
+
+        theme.secondary_button(
+            save_box,
+            "Save",
+            self.save_grading_progress,
+            width=84,
+            height=34
+        ).pack(side="left")
+
         theme.divider(self.main_frame).pack(fill="x")
 
     def load_current_image(self):
@@ -798,11 +1199,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         total = len(self.image_records)
         position = self.current_image_index + 1
 
-        self.progress_label.configure(
-            text=f"Photo {position} of {total}"
-        )
-
-        self.progress_bar.set(position / total)
+        self.refresh_progress()
 
         self.next_button.configure(
             text="Finish" if position == total else "Next  →"
@@ -813,14 +1210,68 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             image_record=image_record
         )
 
+    def refresh_progress(self):
+        """
+        Updates the bar and the counter from the real grading state:
+        the bar = photos with a confirmed Total Score / total photos
+        in the queue; the counter = current position / total.
+        """
+
+        total = len(self.image_records)
+        graded = sum(
+            1 for image_record in self.image_records
+            if image_record.total_score is not None
+        )
+
+        self.progress_bar.set(graded / total if total else 0)
+
+        self.progress_label.configure(
+            text=(
+                f"Photo {self.current_image_index + 1} of {total}  •  "
+                f"{graded} graded"
+            )
+        )
+
+    def set_save_status(self, text, color):
+
+        self.save_status_label.configure(
+            text=text,
+            text_color=color
+        )
+
     def next_image(self):
+        """
+        Moves to the next photo. On the last photo there is no next
+        one, so this finishes grading instead (see finish_grading).
+        """
+
+        if self.current_image_index + 1 >= len(self.image_records):
+            self.finish_grading()
+            return
 
         self.current_image_index += 1
 
-        if self.current_image_index >= len(self.image_records):
+        # The position is part of the saved progress.
+        self.mark_dirty()
+
+        self.load_current_image()
+
+    def finish_grading(self):
+        """
+        Next was pressed on the last photo.
+
+        If every photo is graded, the session is finished: its
+        checkpoint is deleted and the Results screen opens. If some
+        photos were skipped, the session is NOT finished -- any
+        saved checkpoint stays, and unsaved changes get the usual
+        save-before-leaving question first.
+        """
+
+        if self.finish_session_if_complete():
             self.show_results_screen()
-        else:
-            self.load_current_image()
+            return
+
+        self.leave_grading(self.show_results_screen)
 
     def show_results_screen(self):
         """
@@ -925,6 +1376,12 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         save_class(self.class_record)
 
+        # Grading Progress: unsaved checkpoint, progress bar, and --
+        # if that was the last ungraded photo -- finish the session.
+        self.mark_dirty()
+        self.refresh_progress()
+        self.finish_session_if_complete()
+
     # -----------------------------------------
     # PHOTO NOTES
     # -----------------------------------------
@@ -945,6 +1402,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         photo_entry.note = note_text
 
         save_class(self.class_record)
+
+        self.mark_dirty()
 
     # -----------------------------------------
     # BOTTOM BAR
@@ -1008,7 +1467,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.exit_button = theme.ghost_button(
             inner,
             "Exit",
-            self.destroy,
+            self.exit_app,
             width=80,
             height=40
         )

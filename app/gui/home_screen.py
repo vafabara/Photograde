@@ -28,7 +28,9 @@ class HomeScreen:
         on_open_class,
         on_delete_class,
         on_settings=None,
-        on_help=None
+        on_help=None,
+        active_session=None,
+        on_continue_grading=None
     ):
 
         self.classes = classes
@@ -37,6 +39,8 @@ class HomeScreen:
         self.on_delete_class = on_delete_class
         self.on_settings = on_settings
         self.on_help = on_help
+        self.active_session = active_session
+        self.on_continue_grading = on_continue_grading
 
         # Set in create_previous_classes_card (only when there is at
         # least one class to search).
@@ -65,6 +69,9 @@ class HomeScreen:
 
         self.right_column = ctk.CTkFrame(body, fg_color="transparent")
         self.right_column.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
+
+        if self.active_session:
+            self.create_continue_card()
 
         self.create_previous_classes_card()
         self.create_new_class_card()
@@ -133,6 +140,69 @@ class HomeScreen:
             anchor="w",
             pady=(4, 0)
         )
+
+    # -----------------------------------------
+    # LEFT — CONTINUE GRADING
+    # (Grading Progress, Save & Continue)
+    # -----------------------------------------
+
+    def create_continue_card(self):
+        """
+        Shown only when App found an unfinished saved grading
+        session: "Continue (ClassName) Grading" resumes it through
+        on_continue_grading().
+        """
+
+        class_name = self.active_session["class_name"]
+        position = self.active_session["current_index"] + 1
+        total = len(self.active_session["photos"])
+
+        card = theme.card(self.left_column)
+
+        card.pack(
+            fill="x",
+            pady=(0, 14)
+        )
+
+        theme.label(
+            card,
+            "Unfinished grading",
+            size=16,
+            weight="bold",
+            color=theme.ACCENT,
+            anchor="w"
+        ).pack(
+            anchor="w",
+            padx=22,
+            pady=(16, 2)
+        )
+
+        theme.muted(
+            card,
+            f"Saved at photo {position}/{total}",
+            size=13,
+            anchor="w"
+        ).pack(
+            anchor="w",
+            padx=22,
+            pady=(0, 10)
+        )
+
+        theme.primary_button(
+            card,
+            f"Continue ({class_name}) Grading",
+            self.handle_continue_grading,
+            height=38
+        ).pack(
+            fill="x",
+            padx=22,
+            pady=(0, 18)
+        )
+
+    def handle_continue_grading(self):
+
+        if self.on_continue_grading:
+            self.on_continue_grading()
 
     # -----------------------------------------
     # LEFT — PREVIOUS CLASSES
