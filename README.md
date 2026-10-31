@@ -6,9 +6,19 @@
   <strong>Turn photo metadata into consistent, transparent, teacher-guided grades.</strong>
 </p>
 
-# 📷 PhotoGrade
+<p align="center">
+  <strong>Version v1.1.1</strong>
+</p>
 
-**Version 1.1.0**
+<p align="center">
+  <a href="https://github.com/vafabara/Photograde/releases/latest">
+    <strong>⬇️ Download PhotoGrade Installer</strong>
+  </a>
+  <br>
+  <sub>Download the Windows installer from the latest release.</sub>
+</p>
+
+# 📷 PhotoGrade
 
 PhotoGrade is a local-first Python desktop app that helps photography teachers grade student photos. It reads each photo's EXIF metadata, checks it against technical rules the teacher defines, and combines that automatic score with the teacher's own evaluation into a final grade.
 
