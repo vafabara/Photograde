@@ -24,6 +24,12 @@ PhotoGrade is a local-first Python desktop app that helps photography teachers g
 
 Everything runs on your machine: no accounts, no cloud, no database. Classes, notes and scores are stored as plain JSON files.
 
+<p align="center">
+  <a href="https://hub.xerj.org/contributors/vafabara">
+    <img src="https://img.shields.io/badge/XERJ-Corpus%20Hub-3E4A2C?style=flat-square" alt="XERJ Corpus Hub">
+  </a>
+</p>
+
 ## 📸 Screenshots
 
 <div align="center">
