@@ -33,8 +33,15 @@ class ImageRecord:
 
     # Filled in once the Rule Engine grades this photo
     # (core.scoring.grade_student). None until then.
+    # rule_engine_score is always the score that counts toward
+    # total_score: the automatic result, or the teacher's manual
+    # override when rule_engine_overridden is True. The automatic
+    # result is kept separately in rule_engine_auto_score so the two
+    # can always be told apart (see core.teacher_scoring).
     rule_engine_score: float | None = None
     rule_engine_max_score: float | None = None
+    rule_engine_auto_score: float | None = None
+    rule_engine_overridden: bool = False
 
     # Filled in only after the professor presses Confirm on the
     # Teacher Grading panel. None before that -- see is_finalized().

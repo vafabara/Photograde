@@ -84,7 +84,7 @@ class StudentResultsDetailScreen:
     def create_photo_list(self, student):
 
         # Scrollable so a student with many photos (up to the
-        # 20-photo folder limit, and more if photos are added later)
+        # per-student photo limit, and more if photos are added later)
         # stays usable.
         photo_list = ctk.CTkScrollableFrame(
             self.container,
@@ -156,8 +156,19 @@ class StudentResultsDetailScreen:
             padx=18
         )
 
+        # A manually overridden Rule Engine score is labelled as such,
+        # with the automatic score it replaced, so the teacher can
+        # tell it apart from an automatic one.
+        rule_caption = "Rule Engine Score"
+
+        if photo.rule_engine_overridden:
+            rule_caption = "Rule Engine Score • Manual"
+
+            if photo.rule_engine_auto_score is not None:
+                rule_caption += f" (auto {format_score(photo.rule_engine_auto_score)})"
+
         scores = [
-            ("Rule Engine Score", photo.rule_engine_score, False),
+            (rule_caption, photo.rule_engine_score, False),
             ("Teacher Score", photo.teacher_score, False),
             ("Total Score", photo.total_score, True),
         ]

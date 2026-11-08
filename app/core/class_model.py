@@ -63,6 +63,15 @@ class ClassPhotoEntry:
     total_score: float | None = None
     note: str = ""
 
+    # Teacher override of the Rule Engine score (new feature).
+    # rule_engine_score above is always the score that counts (the
+    # manual one when rule_engine_overridden is True);
+    # rule_engine_auto_score keeps what the Rule Engine itself
+    # calculated, so the two stay distinguishable. Old saved classes
+    # have neither key and load as "not overridden".
+    rule_engine_auto_score: float | None = None
+    rule_engine_overridden: bool = False
+
     def to_dict(self):
         return {
             "path": self.path,
@@ -70,6 +79,8 @@ class ClassPhotoEntry:
             "teacher_score": self.teacher_score,
             "total_score": self.total_score,
             "note": self.note,
+            "rule_engine_auto_score": self.rule_engine_auto_score,
+            "rule_engine_overridden": self.rule_engine_overridden,
         }
 
     @classmethod
@@ -80,6 +91,8 @@ class ClassPhotoEntry:
             teacher_score=data.get("teacher_score"),
             total_score=data.get("total_score"),
             note=data.get("note", ""),
+            rule_engine_auto_score=data.get("rule_engine_auto_score"),
+            rule_engine_overridden=bool(data.get("rule_engine_overridden", False)),
         )
 
 
@@ -358,6 +371,8 @@ def image_records_from_student(student_entry):
             teacher_score=photo.teacher_score,
             total_score=photo.total_score,
             note=photo.note,
+            rule_engine_auto_score=photo.rule_engine_auto_score,
+            rule_engine_overridden=photo.rule_engine_overridden,
         )
         for photo in student_entry.photos
     ]

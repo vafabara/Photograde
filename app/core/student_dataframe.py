@@ -21,11 +21,13 @@ import pandas as pd
 
 COLUMNS = ["Photo", "Rule Engine Score", "Teacher Score", "Total Score"]
 NOTE_COLUMN = "Note"
+SOURCE_COLUMN = "Rule Engine Source"
+AUTO_COLUMN = "Automatic Rule Score"
 
 CLASS_COLUMNS = ["Student", "Photos", "Average", "Status"]
 
 
-def build_student_dataframe(student_entry, include_notes=False):
+def build_student_dataframe(student_entry, include_notes=False, include_override=False):
     """
     `student_entry` -- a core.class_model.ClassStudentEntry.
 
@@ -39,6 +41,12 @@ def build_student_dataframe(student_entry, include_notes=False):
     table is unchanged) adds a trailing "Note" column read straight
     from ClassPhotoEntry.note -- used by the Excel export. The
     Average row has no note.
+
+    `include_override` (default False, same reason) adds two columns
+    placed before the note: "Rule Engine Source" ("Automatic" or
+    "Manual override") and "Automatic Rule Score" (what the Rule
+    Engine itself calculated). "Rule Engine Score" always stays the
+    score that counts toward the Total. Used by the Excel export.
     """
 
     rows = [
@@ -47,18 +55,32 @@ def build_student_dataframe(student_entry, include_notes=False):
             "Rule Engine Score": photo.rule_engine_score,
             "Teacher Score": photo.teacher_score,
             "Total Score": photo.total_score,
+            SOURCE_COLUMN: (
+                "Manual override" if photo.rule_engine_overridden else "Automatic"
+            ),
+            AUTO_COLUMN: photo.rule_engine_auto_score,
             NOTE_COLUMN: photo.note or "",
         }
         for index, photo in enumerate(student_entry.photos, start=1)
     ]
 
-    columns = (COLUMNS + [NOTE_COLUMN]) if include_notes else COLUMNS
+    columns = list(COLUMNS)
+
+    if include_override:
+        columns += [SOURCE_COLUMN, AUTO_COLUMN]
+
+    if include_notes:
+        columns.append(NOTE_COLUMN)
 
     dataframe = pd.DataFrame(rows, columns=columns)
 
     numeric_columns = ["Rule Engine Score", "Teacher Score", "Total Score"]
 
     average_row = {"Photo": "Average"}
+
+    if include_override:
+        average_row[SOURCE_COLUMN] = ""
+        average_row[AUTO_COLUMN] = float("nan")
 
     if include_notes:
         average_row[NOTE_COLUMN] = ""

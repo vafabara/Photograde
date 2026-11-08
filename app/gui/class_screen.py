@@ -3,8 +3,17 @@ import math
 import customtkinter as ctk
 from tkinter import filedialog
 
-from ..core.image import scan_student_folder, validate_selected_files, FolderValidationError
+from ..core.clipboard import ClipboardError
+from ..core.image import (
+    MAX_IMAGES_PER_STUDENT,
+    FolderValidationError,
+    merge_student_photos,
+    scan_student_folder,
+    validate_selected_files,
+)
+from ..storage.pasted_images import paste_from_clipboard
 from . import theme
+from .paste import PasteShortcut
 from .widgets import create_modal, show_error, show_confirm
 
 # Fixed pixel widths for the table columns, shared by the header row
@@ -12,7 +21,7 @@ from .widgets import create_modal, show_error, show_confirm
 COL_AVG = 90
 COL_PHOTOS = 70
 COL_GRADED = 140
-COL_ACTIONS = 340
+COL_ACTIONS = 410
 
 
 class ClassScreen:
@@ -53,11 +62,18 @@ class ClassScreen:
         # Set in create_student_list (only when the class has students).
         self.search_entry = None
 
+        # The student Ctrl+V pastes into: the last one whose row
+        # buttons were used (index in class_record.students). With a
+        # single student there is nothing to choose.
+        self.paste_target = 0 if len(class_record.students) == 1 else None
+
         self.container = theme.page(parent)
 
         self.create_header()
         self.create_student_list()
         self.create_add_student_button()
+
+        self.paste_shortcut = PasteShortcut(self.container, self.handle_paste_shortcut)
 
     # -----------------------------------------
     # HEADER
@@ -381,6 +397,16 @@ class ClassScreen:
             padx=(2, 0)
         )
 
+        theme.ghost_button(
+            actions,
+            "+ Paste",
+            lambda i=index: self.handle_add_photos_paste(i),
+            width=66
+        ).pack(
+            side="left",
+            padx=(2, 0)
+        )
+
         theme.danger_button(
             actions,
             "Remove",
@@ -404,6 +430,8 @@ class ClassScreen:
 
     def handle_add_photos_folder(self, index):
 
+        self.paste_target = index
+
         folder_path = filedialog.askdirectory(
             title="Select a photo folder"
         )
@@ -426,6 +454,8 @@ class ClassScreen:
 
     def handle_add_photos_files(self, index):
 
+        self.paste_target = index
+
         file_paths = filedialog.askopenfilenames(
             title="Select photo file(s)"
         )
@@ -445,6 +475,61 @@ class ClassScreen:
             image_paths,
             None
         )
+
+    def handle_add_photos_paste(self, index, in_text_input=False):
+        """
+        "+ Paste" / Ctrl+V: adds the clipboard's image (or copied
+        image files) to this student. The limit and duplicate checks
+        happen in App.on_add_photos_to_class, like for Files/Folder.
+        """
+
+        self.paste_target = index
+
+        student = self.class_record.students[index]
+
+        try:
+            paths = paste_from_clipboard(student.name, len(student.photos))
+        except (ClipboardError, FolderValidationError) as error:
+            show_error(self.container, str(error))
+            return
+
+        if paths is None:
+
+            if not in_text_input:
+                show_error(
+                    self.container,
+                    "The clipboard does not contain an image. Copy an "
+                    "image first, then paste."
+                )
+
+            return
+
+        self.on_add_photos(
+            self.class_record,
+            index,
+            paths,
+            None
+        )
+
+    def handle_paste_shortcut(self, in_text_input):
+
+        # The search box also uses Ctrl+V for text.
+        if in_text_input and self.paste_target is None:
+            return
+
+        if self.paste_target is None:
+            show_error(
+                self.container,
+                "Use a student's \"+ Paste\" button (or one of their "
+                "other photo buttons) first, then press Ctrl+V to paste "
+                "into that student."
+            )
+            return
+
+        if self.paste_target >= len(self.class_record.students):
+            return
+
+        self.handle_add_photos_paste(self.paste_target, in_text_input)
 
     # -----------------------------------------
     # DELETE STUDENT
@@ -530,6 +615,43 @@ class ClassScreen:
             justify="left"
         )
 
+        def add_selection(image_paths, folder_path):
+            """
+            Adds `image_paths` to what is already selected in this
+            dialog (never replacing it), after the same duplicate /
+            limit check every other way of adding photos uses.
+            """
+
+            current = selected["image_paths"] or []
+
+            try:
+                to_add, duplicates = merge_student_photos(current, image_paths)
+            except FolderValidationError as error:
+                kept = f" ({len(current)} photo(s) kept.)" if current else ""
+                status_label.configure(
+                    text=f"⚠ {error}{kept}",
+                    text_color=theme.DANGER
+                )
+                return
+
+            selected["image_paths"] = current + to_add
+
+            if folder_path is not None:
+                selected["folder_path"] = folder_path
+
+            text = (
+                f"✓ {len(selected['image_paths'])} of "
+                f"{MAX_IMAGES_PER_STUDENT} photos"
+            )
+
+            if duplicates:
+                text += f"  •  {len(duplicates)} duplicate(s) skipped"
+
+            status_label.configure(
+                text=text,
+                text_color=theme.SUCCESS
+            )
+
         def select_folder():
 
             folder_path = filedialog.askdirectory(
@@ -548,13 +670,7 @@ class ClassScreen:
                 )
                 return
 
-            selected["image_paths"] = image_paths
-            selected["folder_path"] = folder_path
-
-            status_label.configure(
-                text=f"✓ {len(image_paths)} image(s) from folder",
-                text_color=theme.SUCCESS
-            )
+            add_selection(image_paths, folder_path)
 
         def select_files():
 
@@ -574,12 +690,43 @@ class ClassScreen:
                 )
                 return
 
-            selected["image_paths"] = image_paths
+            add_selection(image_paths, None)
+
+        def paste_image(in_text_input=False):
+
+            current = selected["image_paths"] or []
+            student_name = name_entry.get().strip()
+
+            try:
+                paths = paste_from_clipboard(student_name, len(current))
+            except (ClipboardError, FolderValidationError) as error:
+                status_label.configure(
+                    text=f"⚠ {error}",
+                    text_color=theme.DANGER
+                )
+                return
+
+            if paths is None:
+
+                if not in_text_input:
+                    status_label.configure(
+                        text="⚠ The clipboard does not contain an image. "
+                             "Copy an image first, then paste.",
+                        text_color=theme.DANGER
+                    )
+
+                return
+
+            add_selection(paths, None)
+
+        def clear_selection():
+
+            selected["image_paths"] = None
             selected["folder_path"] = None
 
             status_label.configure(
-                text=f"✓ {len(image_paths)} image(s) selected",
-                text_color=theme.SUCCESS
+                text="No photos selected",
+                text_color=theme.TEXT_MUTED
             )
 
         button_frame = ctk.CTkFrame(
@@ -610,7 +757,33 @@ class ClassScreen:
             select_files,
             width=140,
             height=36
+        ).pack(
+            side="left",
+            padx=(0, 10)
+        )
+
+        theme.secondary_button(
+            button_frame,
+            "Paste",
+            paste_image,
+            width=80,
+            height=36
+        ).pack(
+            side="left",
+            padx=(0, 10)
+        )
+
+        theme.ghost_button(
+            button_frame,
+            "Clear",
+            clear_selection,
+            width=60,
+            height=36
         ).pack(side="left")
+
+        # Ctrl+V pastes an image; in the name box it is still a normal
+        # text paste (nothing happens for a clipboard without an image).
+        PasteShortcut(dialog, paste_image)
 
         status_label.pack(
             anchor="w",

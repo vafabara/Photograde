@@ -6,10 +6,11 @@ from tkinter import TclError
 from pathlib import Path
 from PIL import UnidentifiedImageError
 
-from ..core.image import load_image
+from ..core.image import FolderValidationError, load_image, merge_student_photos
 from ..core.converters import exif_value
 from ..core.scoring import grade_student
 from ..core.student import ImageRecord
+from ..core.teacher_scoring import sync_automatic_score
 from ..core.rules import RuleEngineConfig
 from ..core.class_model import (
     build_class_record,
@@ -46,7 +47,7 @@ from .settings_screen import SettingsScreen
 from .student_detail import StudentDetailScreen
 from .student_results_detail import StudentResultsDetailScreen
 from .student_setup import StudentFoldersScreen
-from .widgets import show_confirm, show_error
+from .widgets import show_confirm, show_error, show_info
 
 
 class App(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -698,6 +699,14 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             show_error(self, str(error))
             return
 
+        # Same duplicate / 6-photo rules as every other way of adding
+        # photos (a brand-new student starts with none).
+        try:
+            image_paths, _ = merge_student_photos([], image_paths)
+        except FolderValidationError as error:
+            show_error(self, str(error))
+            return
+
         class_record.students.append(
             ClassStudentEntry(
                 name=name,
@@ -716,30 +725,51 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         """
         Called by ClassScreen after new photos have been picked and
         validated for an existing student (folder or individual
-        files). Selecting the exact same folder again re-scans it
-        instead of doubling the count/photos, as a simple guard
-        against double counting; individually-selected files always
-        add to the existing set.
+        files). New photos are always ADDED to the student's existing
+        ones -- nothing is replaced, so their scores and notes are
+        never lost, even when the same folder is selected again.
+
+        core.image.merge_student_photos skips photos the student
+        already has (same file) and refuses the whole selection, with
+        a clear message, if it would go over the per-student limit.
         """
 
         student = class_record.students[student_index]
 
-        new_photos = [
-            ClassPhotoEntry(path=str(path)) for path in image_paths
-        ]
+        try:
+            to_add, duplicates = merge_student_photos(
+                [photo.path for photo in student.photos],
+                image_paths
+            )
+        except FolderValidationError as error:
+            show_error(self, str(error))
+            return
 
-        if source_folder is not None and source_folder == student.folder_path:
-            student.photo_count = len(image_paths)
-            student.photos = new_photos
-        else:
-            student.photo_count += len(image_paths)
-            student.photos += new_photos
+        if not to_add:
+            show_info(
+                self,
+                "No new photos",
+                "All of the selected photos are already added for "
+                f"{student.name}."
+            )
+            return
 
-            if source_folder is not None:
-                student.folder_path = source_folder
+        student.photos += [ClassPhotoEntry(path=str(path)) for path in to_add]
+        student.photo_count = len(student.photos)
+
+        if source_folder is not None:
+            student.folder_path = source_folder
 
         save_class(class_record)
         self.open_class_screen(class_record.class_id)
+
+        if duplicates:
+            show_info(
+                self,
+                "Photos added",
+                f"{len(to_add)} photo(s) added. {len(duplicates)} already "
+                "added photo(s) were skipped."
+            )
 
     def on_delete_student_from_class(self, class_record, student_index):
         """
@@ -1026,6 +1056,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             entry.teacher_score = restored.teacher_score
             entry.total_score = restored.total_score
             entry.note = restored.note
+            entry.rule_engine_auto_score = restored.rule_engine_auto_score
+            entry.rule_engine_overridden = restored.rule_engine_overridden
 
         class_record.rule_config = config_data
         save_class(class_record)
@@ -1358,8 +1390,10 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
     def on_teacher_confirm(self, image_record):
         """
         Called by TeacherGradingPanel once a Teacher Grading score is
-        confirmed for the photo on screen. Writes the confirmed
-        Rule Engine / Teacher / Total scores back into the matching
+        confirmed for the photo on screen -- and also when the
+        teacher overrides or resets that photo's Rule Engine score.
+        Writes the Rule Engine (plus its automatic value and override
+        flag) / Teacher / Total scores back into the matching
         core.class_model.ClassPhotoEntry and persists them, so the
         Class Screen's Avg Total and the Student DataFrame both pick
         them up.
@@ -1371,6 +1405,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             return
 
         photo_entry.rule_engine_score = image_record.rule_engine_score
+        photo_entry.rule_engine_auto_score = image_record.rule_engine_auto_score
+        photo_entry.rule_engine_overridden = image_record.rule_engine_overridden
         photo_entry.teacher_score = image_record.teacher_score
         photo_entry.total_score = image_record.total_score
 
@@ -1550,11 +1586,19 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                 # never 0) and the teacher scores the photo out of 100.
                 image_record.rule_engine_score = None
                 image_record.rule_engine_max_score = None
+                image_record.rule_engine_auto_score = None
+                image_record.rule_engine_overridden = False
                 image_record.teacher_max_score = 100
             else:
                 if grading is not None:
-                    image_record.rule_engine_score = grading.technical_score
-                    image_record.rule_engine_max_score = grading.system_score
+                    # Always refreshes the automatic score, but leaves
+                    # a manual override in place instead of
+                    # overwriting it every time the photo is shown.
+                    sync_automatic_score(
+                        image_record,
+                        grading.technical_score,
+                        grading.system_score
+                    )
 
                 if self.rule_config is not None:
                     image_record.teacher_max_score = self.rule_config.human_score

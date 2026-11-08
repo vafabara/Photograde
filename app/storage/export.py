@@ -54,7 +54,8 @@ def export_to_csv(data, path):
 # Workbook layout:
 #   Sheet 1        "Class Results"  -- build_class_dataframe()
 #   One per student (named after them) -- build_student_dataframe(
-#                                         include_notes=True)
+#                                         include_notes=True,
+#                                         include_override=True)
 #
 # Everything is read through the existing DataFrame builders, so
 # nothing here computes or stores a score. Sheet names are only
@@ -170,7 +171,11 @@ def export_class_to_excel(class_record, path):
 
             sheet_name = make_sheet_name(student.name, used_names)
 
-            build_student_dataframe(student, include_notes=True).to_excel(
+            build_student_dataframe(
+                student,
+                include_notes=True,
+                include_override=True
+            ).to_excel(
                 writer,
                 sheet_name=sheet_name,
                 index=False

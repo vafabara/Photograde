@@ -70,3 +70,86 @@ def compute_total_score(rule_engine_score, teacher_score):
     """
 
     return round(rule_engine_score + teacher_score, 1)
+
+
+# -----------------------------------------------------------------
+# RULE ENGINE SCORE OVERRIDE
+#
+# The teacher can replace the Rule Engine's automatic score for one
+# photo. The Rule Engine itself is never bypassed: it still runs for
+# every photo and its result is kept in `rule_engine_auto_score`.
+# `rule_engine_score` always holds the score that counts -- the
+# automatic one, or the manual one while `rule_engine_overridden` is
+# True -- so total_score, averages, the Student DataFrame and the
+# Excel export all keep reading that one field.
+#
+# These helpers work on a core.student.ImageRecord (duck-typed, so
+# this module still imports nothing from the GUI).
+# -----------------------------------------------------------------
+
+def validate_rule_engine_override(raw_value, max_score):
+    """
+    Validate the teacher's manual Rule Engine score. Same rules as
+    validate_teacher_score: a number from 0 up to `max_score` (the
+    photo's Rule Engine maximum, image_record.rule_engine_max_score).
+
+    Returns the float, or raises TeacherScoreError with a message
+    ready to show.
+    """
+
+    return validate_teacher_score(raw_value, max_score)
+
+
+def _refresh_total(image_record):
+    """
+    If the teacher has already confirmed a Teacher score for this
+    photo, its Total Score must follow the new Rule Engine score.
+    Before that, total_score stays None, exactly as it does today.
+    """
+
+    if image_record.teacher_score is not None:
+        image_record.total_score = compute_total_score(
+            image_record.rule_engine_score or 0.0,
+            image_record.teacher_score,
+        )
+
+
+def sync_automatic_score(image_record, auto_score, max_score):
+    """
+    Record the Rule Engine's fresh automatic result for a photo that
+    is being displayed. The automatic score and maximum are always
+    updated; `rule_engine_score` only follows them while the photo
+    is NOT overridden -- this is what stops re-displaying a photo
+    from overwriting the teacher's manual score.
+    """
+
+    image_record.rule_engine_auto_score = auto_score
+    image_record.rule_engine_max_score = max_score
+
+    if not image_record.rule_engine_overridden:
+        image_record.rule_engine_score = auto_score
+
+
+def apply_rule_engine_override(image_record, score):
+    """
+    Make `score` (already validated) the photo's Rule Engine score,
+    flagged as a manual override, and bring its Total Score up to
+    date if the photo was already confirmed.
+    """
+
+    image_record.rule_engine_score = score
+    image_record.rule_engine_overridden = True
+
+    _refresh_total(image_record)
+
+
+def clear_rule_engine_override(image_record):
+    """
+    Go back to the Rule Engine's automatic score for this photo.
+    """
+
+    image_record.rule_engine_score = image_record.rule_engine_auto_score
+    image_record.rule_engine_overridden = False
+
+    _refresh_total(image_record)
+
