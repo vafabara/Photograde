@@ -1,4 +1,4 @@
-<p align="center">
+ <p align="center">
   <img src="assets/images/banner.png" width="100%" alt="PhotoGrade — Photography Grading Assistant">
 </p>
 
@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Version v1.1.1</strong>
+  <strong>Version v1.2.2</strong>
 </p>
 
 <p align="center">
@@ -44,9 +44,17 @@ Everything runs on your machine: no accounts, no cloud, no database. Classes, no
 </div>
 
 ## ✨ Features
+
 <p align="center">
   <img src="assets/images/futures.png" width="100%" alt="PhotoGrade — Photography Grading Assistant">
 </p>
+
+**New in v1.2.2:**
+- **Image Zoom:** Zoom in and out of photos.
+- **Rule Engine Score Override:** Manually override automatically calculated Rule Engine scores.
+- **Paste Images:** Paste images directly from the clipboard.
+- **Multiple Photo Selection:** Select multiple individual photos simultaneously.
+- **Save Fixes:** Fixed save-related bugs and improved data persistence.
 
 ## 🧮 How grading works
 
@@ -105,6 +113,7 @@ Photograde/
 ├── app/
 │   ├── core/                     # Logic only, no GUI imports
 │   │   ├── class_model.py        #   persisted Class / Student / Photo records
+│   │   ├── clipboard.py          #   clipboard image handling [NEW]
 │   │   ├── student.py            #   live review state (ImageRecord)
 │   │   ├── rules.py              #   factors, Rule, RuleEngineConfig, validation
 │   │   ├── tolerance.py          #   automatic tolerance zone
@@ -117,28 +126,29 @@ Photograde/
 │   │   └── histogram.py          #   RGB histogram data
 │   │
 │   ├── gui/                      # CustomTkinter screens
-│   │   ├── app.py                #   App controller: navigation + persistence
-│   │   ├── theme.py              #   design system: colors, fonts, shared widgets
-│   │   ├── widgets.py            #   dialogs (confirm, error, info, note, prompt)
-│   │   ├── home_screen.py        #   previous classes, search, new class
-│   │   ├── class_screen.py       #   students, search, add photos / students
-│   │   ├── student_setup.py      #   photo selection during class creation
-│   │   ├── rule_engine.py        #   rule ranges, score split, presets
-│   │   ├── image_viewer.py       #   preview, histogram, note bar
-│   │   ├── metadata_panel.py     #   file + EXIF info with rule colors
-│   │   ├── teacher_grading.py    #   Rule Engine / Teacher / Total panel
-│   │   ├── results_screen.py     #   class results + Excel export button
-│   │   ├── student_detail.py     #   per-photo score table (from Class screen)
+│   │   ├── app.py                # App controller: navigation + persistence
+│   │   ├── theme.py              # design system: colors, fonts, shared widgets
+│   │   ├── widgets.py            # dialogs (confirm, error, info, note, prompt)
+│   │   ├── home_screen.py        # previous classes, search, new class
+│   │   ├── class_screen.py       # students, search, add photos / students
+│   │   ├── student_setup.py      # photo selection during class creation
+│   │   ├── rule_engine.py        # rule ranges, score split, presets
+│   │   ├── image_viewer.py       # preview, zoom, histogram, note bar
+│   │   ├── paste.py              # paste images from clipboard [NEW]
+│   │   ├── metadata_panel.py     # file + EXIF info with rule colors
+│   │   ├── teacher_grading.py    # Rule Engine / Teacher / Total panel
+│   │   ├── results_screen.py     # class results + Excel export button
+│   │   ├── student_detail.py     # per-photo score table (from Class screen)
 │   │   ├── student_results_detail.py  # per-photo scores and notes (from Results)
-│   │   ├── settings_screen.py    #   app defaults and preferences
-│   │   └── help.py               #   built-in "How to Use" screen
+│   │   ├── settings_screen.py    # app defaults and preferences
+│   │   └── help.py               # built-in "How to Use" screen
 │   │
 │   └── storage/                  # Persistence and export, no GUI code
-│       ├── class_storage.py      #   classes/<id>/class.json
-│       ├── rule_presets.py       #   saved Rule Engine presets
-│       ├── settings_storage.py   #   app settings
-│       ├── grading_session.py    #   Save & Continue checkpoint
-│       └── export.py             #   Excel workbook export
+│       ├── class_storage.py      # classes/<id>/class.json
+│       ├── rule_presets.py       # saved Rule Engine presets
+│       ├── settings_storage.py   # app settings
+│       ├── grading_session.py    # Save & Continue checkpoint
+│       └── export.py             # Excel workbook export
 │
 ├── assets/images/                # README screenshots
 ├── tests/                        # pytest suite
