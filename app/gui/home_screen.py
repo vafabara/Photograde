@@ -51,6 +51,12 @@ class HomeScreen:
 
         self.create_hero()
 
+        # Packed before `body` on purpose: with pack(), a side="bottom"
+        # widget must be placed before the expanding widget, otherwise
+        # the expanding body claims all the space and the footer can
+        # get clipped when the window is small.
+        self.create_footer()
+
         body = ctk.CTkFrame(self.container, fg_color="transparent")
 
         body.pack(
@@ -139,6 +145,27 @@ class HomeScreen:
         ).pack(
             anchor="w",
             pady=(4, 0)
+        )
+
+    # -----------------------------------------
+    # FOOTER (credit)
+    # -----------------------------------------
+
+    def create_footer(self):
+        """
+        A small, low-key credit line in the bottom-right corner.
+        Purely decorative: no behavior, no callbacks.
+        """
+
+        theme.muted(
+            self.container,
+            "Made by Vafa",
+            size=11,
+            anchor="e"
+        ).pack(
+            side="bottom",
+            anchor="e",
+            pady=(6, 0)
         )
 
     # -----------------------------------------

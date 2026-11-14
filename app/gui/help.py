@@ -1,3 +1,5 @@
+import webbrowser
+
 import customtkinter as ctk
 
 from . import theme
@@ -6,20 +8,32 @@ from . import theme
 # -----------------------------------------------------------------
 # HELP CONTENT
 #
-# Sections 1-14 are the provided Help content, unchanged. Section 15
-# was added to describe Save & Continue, search and Settings. It is
-# split into blocks so the screen can lay it out with headings, body
-# text, bullet lists and highlighted lines. Each section is
+# The "About" section at the top credits the author. Sections 1-14 are
+# the provided Help content, unchanged. Section 15 was added to
+# describe Save & Continue, search and Settings. It is split into
+# blocks so the screen can lay it out with headings, body text,
+# bullet lists and highlighted lines. Each section is
 # (heading, [blocks]); a block is:
 #
 #   ("p", text)       a body paragraph
 #   ("list", items)   a bullet list (one string per bullet)
 #   ("lines", lines)  short highlighted lines (workflow, example values)
+#   ("link", url)     a clickable link that opens in the default browser
 # -----------------------------------------------------------------
 
 PAGE_TITLE = "How to use PhotoGrade"
 
+AUTHOR_URL = "https://github.com/vafabara"
+
 SECTIONS = [
+    (
+        "About",
+        [
+            ("p", "PhotoGrade was designed and built by Vafa."),
+            ("p", "You can find more of my projects on GitHub:"),
+            ("link", AUTHOR_URL),
+        ],
+    ),
     (
         "What is PhotoGrade?",
         [
@@ -266,6 +280,8 @@ class HelpScreen:
                 self.create_bullet_list(card, content)
             elif kind == "lines":
                 self.create_highlight(card, content)
+            elif kind == "link":
+                self.create_link(card, content)
 
         # Bottom breathing room inside the card.
         ctk.CTkFrame(
@@ -313,6 +329,31 @@ class HelpScreen:
             height=5,
             fg_color="transparent"
         ).pack()
+
+    def create_link(self, card, url):
+        """
+        A clickable link. Tk labels have no built-in link behavior, so
+        this is a normal label that shows a hand cursor and opens the
+        URL in the default browser when clicked.
+        """
+
+        link = theme.label(
+            card,
+            url,
+            size=14,
+            weight="bold",
+            color=theme.ACCENT,
+            anchor="w",
+            cursor="hand2"
+        )
+
+        link.pack(
+            anchor="w",
+            padx=22,
+            pady=(0, 8)
+        )
+
+        link.bind("<Button-1>", lambda event: webbrowser.open(url))
 
     def create_highlight(self, card, lines):
         """
