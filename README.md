@@ -43,6 +43,14 @@ Everything runs on your machine: no accounts, no cloud, no database. Classes, no
   </p>
 </div>
 
+
+## 🔄 Workflow
+
+<p align="center">
+  <img src="assets/Workflow.png" width="85%" alt="PhotoGrade — Typical Workflow">
+</p>
+
+
 ## ✨ Features
 
 <p align="center">
